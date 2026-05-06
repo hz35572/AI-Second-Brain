@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+ai_second_brain_backend.egg-info/PKG-INFO
+ai_second_brain_backend.egg-info/SOURCES.txt
+ai_second_brain_backend.egg-info/dependency_links.txt
+ai_second_brain_backend.egg-info/requires.txt
+ai_second_brain_backend.egg-info/top_level.txt
+app/__init__.py
+app/main.py
