@@ -9,7 +9,7 @@ cd ..
 docker compose up -d postgres redis
 cd backend
 uv sync
-alembic -c alembic.ini upgrade head
+uv run alembic -c alembic.ini upgrade head
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
