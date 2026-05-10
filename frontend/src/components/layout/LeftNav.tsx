@@ -8,6 +8,7 @@ import {
   ChevronDown,
   BrainCircuit,
   LogOut,
+  LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUIStore } from "@/store/ui";
+import { useAuthStore } from "@/store/auth";
 
 const mockConversations = [
   { id: "c1", title: "关于第三季度预算的讨论", updated_at: "2026-04-26" },
@@ -28,6 +30,7 @@ const mockConversations = [
 export function LeftNav() {
   const router = useRouter();
   const { leftNavCollapsed, toggleLeftNav } = useUIStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
 
   if (leftNavCollapsed) {
     return (
@@ -35,13 +38,23 @@ export function LeftNav() {
         <Button variant="ghost" size="icon" onClick={toggleLeftNav}>
           <BrainCircuit className="h-5 w-5 text-[#4F46E5]" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => router.push("/files")}
-        >
-          <FolderOpen className="h-5 w-5" />
-        </Button>
+        {isAuthenticated ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/files")}
+          >
+            <FolderOpen className="h-5 w-5" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/login")}
+          >
+            <LogIn className="h-5 w-5" />
+          </Button>
+        )}
       </div>
     );
   }
@@ -64,71 +77,98 @@ export function LeftNav() {
           </Button>
         </div>
 
-        <Button
-          className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
-          onClick={() => router.push("/chat")}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          新建对话
-        </Button>
+        {isAuthenticated ? (
+          <>
+            <Button
+              className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
+              onClick={() => router.push("/chat")}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              新建对话
+            </Button>
 
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-2 mt-2 text-[#111827] hover:bg-[#EEF2FF]"
-          onClick={() => router.push("/files")}
-        >
-          <FolderOpen className="h-4 w-4" />
-          知识库
-        </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 mt-2 text-[#111827] hover:bg-[#EEF2FF]"
+              onClick={() => router.push("/files")}
+            >
+              <FolderOpen className="h-4 w-4" />
+              知识库
+            </Button>
+          </>
+        ) : (
+          <Button
+            className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
+            onClick={() => router.push("/login")}
+          >
+            <LogIn className="h-4 w-4 mr-2" />
+            登录
+          </Button>
+        )}
       </div>
 
       <Separator className="bg-[#E5E7EB]" />
 
-      <ScrollArea className="flex-1 px-3 py-3">
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2 px-2">
-              近期对话
-            </h3>
-            <div className="space-y-0.5">
-              {mockConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => router.push(`/chat?conversation=${conv.id}`)}
-                  className="flex flex-col w-full rounded-md px-2 py-1.5 text-sm text-[#111827] hover:bg-[#EEF2FF] transition-colors text-left"
-                >
-                  <span className="truncate">{conv.title}</span>
-                  <span className="text-xs text-[#6B7280]">{conv.updated_at}</span>
-                </button>
-              ))}
+      {isAuthenticated && (
+        <ScrollArea className="flex-1 px-3 py-3">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2 px-2">
+                近期对话
+              </h3>
+              <div className="space-y-0.5">
+                {mockConversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => router.push(`/chat?conversation=${conv.id}`)}
+                    className="flex flex-col w-full rounded-md px-2 py-1.5 text-sm text-[#111827] hover:bg-[#EEF2FF] transition-colors text-left"
+                  >
+                    <span className="truncate">{conv.title}</span>
+                    <span className="text-xs text-[#6B7280]">{conv.updated_at}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      )}
 
-      <Separator className="bg-[#E5E7EB]" />
+      {isAuthenticated && <Separator className="bg-[#E5E7EB]" />}
 
       <div className="p-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button variant="ghost" className="w-full justify-start gap-2">
-              <div className="h-7 w-7 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-medium">
-                U
-              </div>
-              <span className="text-sm text-[#111827]">用户</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
-              <Settings className="h-4 w-4 mr-2" />
-              设置
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <LogOut className="h-4 w-4 mr-2" />
-              退出登录
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {isAuthenticated ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button variant="ghost" className="w-full justify-start gap-2">
+                <div className="h-7 w-7 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-medium">
+                  {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                </div>
+                <span className="text-sm text-[#111827]">
+                  {user?.name || "用户"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
+                <Settings className="h-4 w-4 mr-2" />
+                设置
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={logout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={() => router.push("/login")}
+          >
+            <LogIn className="h-4 w-4" />
+            <span className="text-sm text-[#111827]">登录</span>
+          </Button>
+        )}
       </div>
     </aside>
   );
