@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from alembic import command
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.db.session import async_session_maker
+from app.services.email_verification_service import EmailVerificationService
 
 
 async def _can_connect(db_url: str) -> bool:
@@ -22,6 +25,26 @@ async def _can_connect(db_url: str) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+async def _register_with_code(client: AsyncClient, *, email: str, password: str, name: str = "测试"):
+    code = "123456"
+    async with async_session_maker() as session:
+        verification = EmailVerificationService(session)
+        record = await verification.codes.create(
+            email=email,
+            purpose="register",
+            code_hash=verification.hash_code(email=email, purpose="register", code=code),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            max_attempts=5,
+        )
+        await verification.codes.mark_sent(record)
+        await session.commit()
+
+    return await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "name": name, "verification_code": code},
+    )
 
 
 @pytest.mark.asyncio
@@ -39,7 +62,7 @@ async def test_full_flow_txt_upload_and_chat_sse():
 
     async with AsyncClient(app=app, base_url="http://test") as client:
         email = f"test-{uuid.uuid4()}@example.com"
-        r = await client.post("/api/v1/auth/register", json={"email": email, "password": "password1", "name": "测试"})
+        r = await _register_with_code(client, email=email, password="password1")
         assert r.status_code == 201
         token = r.json()["data"]["token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -118,10 +141,37 @@ async def test_register_rejects_password_over_bcrypt_limit():
         email = f"test-{uuid.uuid4()}@example.com"
         response = await client.post(
             "/api/v1/auth/register",
-            json={"email": email, "password": password, "name": "too-long"},
+            json={"email": email, "password": password, "name": "too-long", "verification_code": "123456"},
         )
 
     assert response.status_code == 422
     payload = response.json()
     assert payload["code"] == "ERR_INVALID_ARGUMENT"
     assert any("72 UTF-8 bytes" in error["msg"] for error in payload["details"]["errors"])
+
+
+@pytest.mark.asyncio
+async def test_email_verification_register_success_and_reuse_rejected():
+    settings = get_settings()
+    if not await _can_connect(settings.database_url):
+        pytest.skip("Postgres not available; start services via docker-compose.yml")
+
+    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "..", "..", "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+    app = create_app()
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        email = f"test-{uuid.uuid4()}@example.com"
+        response = await _register_with_code(client, email=email, password="password1")
+        assert response.status_code == 201
+        data = response.json()["data"]
+        assert set(data.keys()) == {"token", "expires_in", "user"}
+        assert data["user"]["email"] == email
+
+        reused = await client.post(
+            "/api/v1/auth/register",
+            json={"email": f"test-{uuid.uuid4()}@example.com", "password": "password1", "name": "reuse", "verification_code": "123456"},
+        )
+        assert reused.status_code == 400

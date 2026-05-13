@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BrainCircuit, Loader2 } from "lucide-react";
+import { BrainCircuit, Loader2, MailCheck } from "lucide-react";
 import { GithubIcon } from "@/components/icons/GithubIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { register, sendEmailVerificationCode } from "@/lib/api/auth";
 import { useAuthStore } from "@/store/auth";
 
 export default function RegisterPage() {
@@ -24,20 +25,51 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = window.setTimeout(() => setCountdown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown]);
 
   const validatePassword = (pwd: string): string | null => {
-    if (pwd.length < 6) {
-      return "密码长度不能小于6位";
+    if (pwd.length < 8) {
+      return "密码长度不能小于8位";
     }
     return null;
+  };
+
+  const handleSendCode = async () => {
+    setError("");
+    setNotice("");
+
+    if (!email) {
+      setError("请先输入邮箱");
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const result = await sendEmailVerificationCode({ email, purpose: "register" });
+      setCountdown(60);
+      setNotice(`验证码已发送，请在 ${Math.floor(result.expires_in / 60)} 分钟内完成注册`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "验证码发送失败");
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!email || !password || !confirmPassword) {
+    if (!email || !password || !confirmPassword || !verificationCode) {
       setError("请填写所有字段");
       return;
     }
@@ -56,27 +88,18 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // TODO: 替换为实际 API 调用
-      // const response = await fetch("/api/auth/register", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email, password }),
-      // });
-      // const data = await response.json();
-
-      // 模拟注册成功
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      login({
-        id: "1",
+      const result = await register({
         email,
+        password,
         name: email.split("@")[0],
-        provider: "local",
+        verification_code: verificationCode,
       });
+      localStorage.setItem("aisb_token", result.token);
+      login(result.user);
 
       router.push("/chat");
-    } catch {
-      setError("注册失败，请稍后重试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "注册失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -124,18 +147,52 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="verificationCode">邮箱验证码</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="verificationCode"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="6位数字验证码"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    disabled={isLoading}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={handleSendCode}
+                    disabled={isLoading || isSendingCode || countdown > 0}
+                  >
+                    {isSendingCode ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : countdown > 0 ? (
+                      `${countdown}s`
+                    ) : (
+                      <>
+                        <MailCheck className="h-4 w-4 mr-2" />
+                        发送
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="password">密码</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="至少6位字符"
+                  placeholder="至少8位字符"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
                   required
                 />
                 <p className="text-xs text-[#6B7280]">
-                  密码长度不能小于6位
+                  密码长度不能小于8位
                 </p>
               </div>
               <div className="space-y-2">
@@ -154,6 +211,11 @@ export default function RegisterPage() {
               {error && (
                 <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">
                   {error}
+                </p>
+              )}
+              {notice && (
+                <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded">
+                  {notice}
                 </p>
               )}
 

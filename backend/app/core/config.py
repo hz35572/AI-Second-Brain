@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # Database (PostgreSQL async)
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = 5433
     POSTGRES_USER: str = "aisb"
     POSTGRES_PASSWORD: str = "aisb"
     POSTGRES_DB: str = "aisb"
@@ -89,6 +89,19 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     API_KEY: str = "change-me-in-production"
     API_KEY_HEADER: str = "X-API-Key"
+
+    # Email verification / SMTP
+    SMTP_HOST: str = "smtp.qq.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = "3557298831@qq.com"
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "3557298831@qq.com"
+    SMTP_USE_TLS: bool = True
+    EMAIL_DEV_MODE: bool = True
+    EMAIL_CODE_EXPIRE_MINUTES: int = 10
+    EMAIL_CODE_RESEND_INTERVAL_SECONDS: int = 60
+    EMAIL_CODE_DAILY_LIMIT: int = 10
+    EMAIL_CODE_MAX_ATTEMPTS: int = 5
 
     # Legacy env names from the previous backend config.
     JWT_SECRET: str | None = None

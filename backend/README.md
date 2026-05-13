@@ -16,3 +16,4 @@ uv run uvicorn app.main:app --reload --port 8000
 Environment:
 
 - Copy `.env.example` to `.env` and adjust values (variables use `AISB_` prefix).
+- Local Docker Postgres is published on host port `5433` (`5432` is used inside the container).

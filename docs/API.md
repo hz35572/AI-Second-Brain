@@ -72,7 +72,45 @@ Citation（引用项，支持 PDF/分页与 Excel/非分页定位）：
 
 ## 2. 认证模块
 
-### 2.1 用户注册
+### 2.1 发送邮箱验证码
+
+`POST /auth/email-verification-code`
+
+用于注册前发送邮箱验证码。验证码仅用于 `purpose=register` 的注册场景，默认 10 分钟有效。
+
+Request:
+
+```json
+{
+  "email": "user@example.com",
+  "purpose": "register"
+}
+```
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "email": "user@example.com",
+    "purpose": "register",
+    "expires_in": 600,
+    "resend_after": 60
+  }
+}
+```
+
+错误码：
+
+| code | HTTP | 含义 |
+| --- | --- | --- |
+| `ERR_EMAIL_EXISTS` | 400 | 邮箱已注册 |
+| `ERR_VERIFICATION_CODE_RATE_LIMITED` | 429 | 同一邮箱发送过于频繁 |
+| `ERR_VERIFICATION_CODE_DAILY_LIMIT` | 429 | 同一邮箱当日发送次数超限 |
+| `ERR_EMAIL_SEND_FAILED` | 503 | SMTP 配置缺失或邮件发送失败 |
+
+### 2.2 用户注册
 
 `POST /auth/register`
 
@@ -82,7 +120,8 @@ Request:
 {
   "email": "user@example.com",
   "password": "min_8_chars",
-  "name": "用户名"
+  "name": "用户名",
+  "verification_code": "123456"
 }
 ```
 
@@ -92,15 +131,35 @@ Response 201:
 {
   "code": 0,
   "data": {
-    "user_id": "uuid",
-    "email": "user@example.com",
-    "name": "用户名",
-    "token": "jwt_token"
+    "token": "jwt_token",
+    "expires_in": 86400,
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "用户名"
+    }
   }
 }
 ```
 
-### 2.2 用户登录
+错误码：
+
+| code | HTTP | 含义 |
+| --- | --- | --- |
+| `ERR_EMAIL_EXISTS` | 400 | 邮箱已注册 |
+| `ERR_INVALID_VERIFICATION_CODE` | 400 | 验证码错误 |
+| `ERR_VERIFICATION_CODE_EXPIRED` | 400 | 验证码已过期 |
+| `ERR_VERIFICATION_CODE_USED` | 400 | 验证码已被消费 |
+| `ERR_VERIFICATION_CODE_ATTEMPTS_EXCEEDED` | 429 | 验证码尝试次数超限 |
+| `ERR_INVALID_ARGUMENT` | 422 | 邮箱、密码或验证码格式错误 |
+
+说明：
+
+- 注册成功响应与登录接口保持一致，前端统一从 `data.token` 与 `data.user` 读取认证状态。
+- 服务端必须在创建用户前完成验证码校验；验证码校验成功后必须标记为已消费。
+- 密码仍使用 bcrypt 哈希，密码 UTF-8 字节长度不得超过 bcrypt 限制。
+
+### 2.3 用户登录
 
 `POST /auth/login`
 

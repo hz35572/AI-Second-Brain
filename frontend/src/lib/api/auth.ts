@@ -1,6 +1,6 @@
 import { User } from "@/store/auth";
 
-const API_BASE = "/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
 
 export interface LoginCredentials {
   email: string;
@@ -11,6 +11,12 @@ export interface RegisterCredentials {
   email: string;
   password: string;
   name?: string;
+  verification_code: string;
+}
+
+export interface EmailVerificationCodePayload {
+  email: string;
+  purpose: "register";
 }
 
 export interface AuthResponse {
@@ -21,7 +27,7 @@ export interface AuthResponse {
     user: {
       id: string;
       email: string;
-      name: string;
+      name: string | null;
     };
   };
 }
@@ -44,7 +50,7 @@ export async function login(credentials: LoginCredentials): Promise<{ token: str
     user: {
       id: result.data.user.id,
       email: result.data.user.email,
-      name: result.data.user.name,
+      name: result.data.user.name ?? undefined,
       provider: "local",
     },
   };
@@ -68,10 +74,26 @@ export async function register(credentials: RegisterCredentials): Promise<{ toke
     user: {
       id: result.data.user.id,
       email: result.data.user.email,
-      name: result.data.user.name,
+      name: result.data.user.name ?? undefined,
       provider: "local",
     },
   };
+}
+
+export async function sendEmailVerificationCode(payload: EmailVerificationCodePayload): Promise<{ expires_in: number }> {
+  const response = await fetch(`${API_BASE}/auth/email-verification-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || "验证码发送失败");
+  }
+
+  const result: { data: { expires_in: number } } = await response.json();
+  return { expires_in: result.data.expires_in };
 }
 
 export function getGithubAuthUrl(): string {
@@ -107,7 +129,7 @@ export async function handleGithubCallback(code: string): Promise<{ token: strin
     user: {
       id: result.data.user.id,
       email: result.data.user.email,
-      name: result.data.user.name,
+      name: result.data.user.name ?? undefined,
       provider: "github",
     },
   };

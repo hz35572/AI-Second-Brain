@@ -1,8 +1,8 @@
 # AI Second Brain 数据库设计
 
-**最后更新**：2026-05-02  
+**最后更新**：2026-05-12  
 **数据库**：PostgreSQL 16  
-**单一事实来源**：本文件 + `backend/alembic/versions/0001_init.py`
+**单一事实来源**：本文件 + `backend/alembic/versions/`
 
 ## 1. 设计原则
 
@@ -30,6 +30,39 @@
 
 - `uq_users_email`
 - `idx_users_email`
+
+### `email_verification_codes`
+
+用于邮箱验证码注册。验证码明文只用于当次邮件发送，数据库只保存验证码哈希。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `uuid` | 主键，`gen_random_uuid()` |
+| `email` | `varchar(255)` | 接收验证码的邮箱，统一小写规范化 |
+| `purpose` | `varchar(30)` | 验证码用途，MVP 使用 `register` |
+| `code_hash` | `varchar(255)` | 验证码哈希，不保存明文 |
+| `send_status` | `varchar(20)` | `sent/failed` |
+| `attempt_count` | `integer` | 当前验证码校验失败次数 |
+| `max_attempts` | `integer` | 当前验证码最大校验次数，默认 5 |
+| `expires_at` | `timestamptz` | 过期时间，默认发送后 10 分钟 |
+| `consumed_at` | `timestamptz` | 成功注册后消费时间，可空 |
+| `last_error` | `text` | 邮件发送失败原因或服务端排障信息，可空 |
+| `created_at` | `timestamptz` | 创建时间 |
+| `updated_at` | `timestamptz` | 更新时间 |
+
+索引：
+
+- `idx_email_verification_codes_email_purpose_created`
+- `idx_email_verification_codes_email_purpose_active`（建议部分索引：`consumed_at IS NULL`）
+- `idx_email_verification_codes_expires_at`
+
+业务约束：
+
+- 同一邮箱同一用途默认 60 秒内只能发送一次验证码。
+- 同一邮箱同一用途默认每日最多发送 10 次验证码。
+- 注册校验只使用未消费、未过期、用途匹配且未超过 `max_attempts` 的最新验证码。
+- 验证码校验成功后必须写入 `consumed_at`，避免重复注册。
+- 过期或已消费验证码可由定时任务清理；建议保留最近 7 天记录用于频控与审计。
 
 ### `folders`
 
@@ -186,6 +219,7 @@
 ## 3. 级联与一致性要求
 
 - `users` 删除时级联删除其 `folders/files/file_chunks/tags/conversations/tasks`。
+- `email_verification_codes` 注册前可能没有对应 `users` 记录，不设置用户外键；用户删除不影响历史发码记录。
 - `folders.parent_id` 级联删除子目录。
 - `files` 删除时数据库侧级联删除 `file_chunks`，并要求应用层同步清理：
   - Qdrant 中对应向量记录
@@ -198,3 +232,10 @@
 - 每个可用于回答的 `file_chunks` 记录必须能映射到原文定位信息。
 - PDF MVP 至少保证 `page_number` 正确，`start_pos/end_pos` 或近似高亮可用。
 - 对非分页文档，使用 `locator` 保存 sheet、行列、段落等定位信息。
+
+## 5. 与邮箱验证码相关的约束
+
+- `email_verification_codes.code_hash` 必须保存安全哈希，不得保存 6 位验证码明文。
+- 生产日志不得记录验证码明文、邮件正文、SMTP 密码或用户密码。
+- 发送失败的记录可保留 `send_status=failed` 与脱敏后的 `last_error`，但不得被注册接口用于校验。
+- 数据库只提供状态与审计记录；发送间隔、每日上限和尝试次数由服务层在事务中校验并更新。

@@ -67,7 +67,7 @@
 
 - Frontend：`3000`
 - Backend：`8000`
-- Postgres：`5432`
+- Postgres：`5433`
 - Redis：`6379`
 - Qdrant：`6333`（HTTP）、`6334`（gRPC）
 - MinIO：`9000`（S3 API）、`9001`（Console）
