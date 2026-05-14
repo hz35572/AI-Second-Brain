@@ -76,17 +76,7 @@
 
 ## 安装与启动（本地开发）
 
-### 1) 启动依赖服务（Docker Compose）
-
-在项目根目录执行：
-
-```powershell
-docker compose up -d
-```
-
-> 默认会启动 Postgres / Redis / Qdrant / MinIO（见 `docker-compose.yml`）。
-
-### 2) 配置环境变量
+### 1) 配置环境变量
 
 根目录复制一份环境变量文件：
 
@@ -101,29 +91,34 @@ Copy-Item .env.example .env
 - `AISB_JWT_SECRET`（JWT 密钥）
 - `AISB_STORAGE_DIR`（本地对象存储目录）
 
-### 3) 启动后端（FastAPI）
+### 2) 使用 `make` 一键准备并启动
+
+项目根目录提供了统一的 `Makefile`，推荐直接使用下面的命令完成本地开发启动：
 
 ```powershell
-cd backend
-uv sync
-uv run alembic -c alembic.ini upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+make setup
+make dev
 ```
 
-### 4) 启动前端（Next.js）
+含义说明：
 
-新开一个终端：
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+- `make setup`：启动依赖服务，并安装后端/前端依赖，最后执行后端数据库迁移
+- `make dev`：同时启动后端 FastAPI 和前端 Next.js 开发服务
 
 打开：
 
 - 前端：`http://localhost:3000`
 - 后端（API）：`http://localhost:8000/api/v1`
+
+### 3) 常用 `make` 命令
+
+```powershell
+make up       # 启动 Postgres / Redis / Qdrant / MinIO
+make down     # 停止 Docker 依赖服务
+make logs     # 查看依赖服务日志
+make backend-run # 只启动后端服务
+make frontend-run # 只启动前端服务
+``` 
 
 ---
 
