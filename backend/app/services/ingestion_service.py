@@ -98,14 +98,14 @@ class IngestionService:
             f.page_count = document.page_count
             f.word_count = document.word_count
             
-            logger.info(
-                "Parsed uploaded document file_id=%s task_id=%s file_name=%s page_count=%s word_count=%s",
-                file_id,
-                task_id,
-                f.name,
-                document.page_count,
-                document.word_count,
-            )
+            # logger.info(
+            #     "Parsed uploaded document file_id=%s task_id=%s file_name=%s page_count=%s word_count=%s",
+            #     file_id,
+            #     task_id,
+            #     f.name,
+            #     document.page_count,
+            #     document.word_count,
+            # )
             for page in document.pages:
                 logger.debug(
                     "Parsed document page content file_id=%s task_id=%s page_number=%s text_chars=%s preview=%r",

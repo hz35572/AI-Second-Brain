@@ -4,6 +4,7 @@ import pytest
 
 from app.deepdoc.models import ParseOptions, SourceLocator
 from app.deepdoc.parsers.base import ParseError
+from app.deepdoc.parsers.pdf import PdfParser
 from app.deepdoc.registry import ParserRegistry
 from app.deepdoc.service import parse
 
@@ -15,6 +16,8 @@ def test_parser_registry_resolves_by_mime_type_and_extension() -> None:
     assert registry.resolve(mime_type=None, file_name="report.docx").__class__.__name__ == "DocxParser"
     assert registry.resolve(mime_type=None, file_name="sheet.xlsx").__class__.__name__ == "ExcelParser"
     assert registry.resolve(mime_type=None, file_name="deck.pptx").__class__.__name__ == "PptParser"
+    assert registry.resolve(mime_type="text/markdown", file_name="doc.bin").__class__.__name__ == "MarkdownParser"
+    assert registry.resolve(mime_type=None, file_name="notes.md").__class__.__name__ == "MarkdownParser"
     assert registry.resolve(mime_type="text/plain", file_name="doc.bin").__class__.__name__ == "TextParser"
 
 
@@ -52,6 +55,31 @@ async def test_text_parser_returns_uniform_document(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_markdown_parser_returns_blocks_and_locator(tmp_path) -> None:
+    file_path = tmp_path / "note.md"
+    content = "# Deepdoc\n\nMarkdown paragraph\n## Details\n- cited item"
+    file_path.write_text(content, encoding="utf-8")
+
+    document = await parse(
+        file_path=str(file_path),
+        mime_type="text/markdown",
+        file_name="note.md",
+        options=ParseOptions(enable_ocr=False),
+    )
+
+    assert document.metadata["parser"] == "markdown"
+    assert document.text == content
+    assert document.pages[0].page_number is None
+    assert document.pages[0].locator is not None
+    assert document.pages[0].locator.to_dict() == {"type": "markdown", "start": 0, "end": len(content)}
+    assert [block.kind for block in document.blocks] == ["title", "paragraph", "title", "paragraph"]
+    assert document.blocks[0].text == "Deepdoc"
+    assert document.blocks[0].metadata == {"level": 1}
+    assert document.blocks[0].locator is not None
+    assert document.blocks[0].locator.to_dict() == {"type": "markdown", "start": 0, "end": 9}
+
+
+@pytest.mark.asyncio
 async def test_image_parser_requires_ocr_when_disabled(tmp_path) -> None:
     file_path = tmp_path / "scan.png"
     file_path.write_bytes(b"not a real image")
@@ -75,7 +103,7 @@ async def test_pdf_parser_returns_page_based_document(tmp_path) -> None:
     with file_path.open("wb") as fp:
         writer.write(fp)
 
-    document = await parse(
+    document = await PdfParser().parse(
         file_path=str(file_path),
         mime_type="application/pdf",
         file_name="sample.pdf",

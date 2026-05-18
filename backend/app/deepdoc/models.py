@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
-LocatorKind = Literal["text", "pdf", "docx", "excel", "ppt", "image", "unknown"]
+LocatorKind = Literal["text", "markdown", "pdf", "docx", "excel", "ppt", "image", "unknown"]
 BlockKind = Literal["text", "title", "paragraph", "table", "image", "slide", "sheet"]
 
 

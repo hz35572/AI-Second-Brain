@@ -5,8 +5,8 @@ from app.deepdoc.parsers.base import BaseParser
 
 
 class TextParser(BaseParser):
-    mime_types = {"text/plain", "text/markdown", "application/octet-stream"}
-    extensions = {".txt", ".md", ".markdown"}
+    mime_types = {"text/plain", "application/octet-stream"}
+    extensions = {".txt"}
 
     async def parse(
         self, *, file_path: str, mime_type: str | None, file_name: str, options: ParseOptions
