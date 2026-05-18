@@ -124,7 +124,7 @@
 | `page_number` | `integer` | PDF/分页文档页码，可空 |
 | `start_pos` | `integer` | chunk 起始偏移，可空 |
 | `end_pos` | `integer` | chunk 结束偏移，可空 |
-| `locator` | `jsonb` | 非分页文档定位信息，可空 |
+| `locator` | `jsonb` | deepdoc 生成的原文定位信息，可空 |
 | `token_count` | `integer` | token 数，可空 |
 | `vector_id` | `varchar(100)` | 向量库记录 ID，可空 |
 | `created_at` | `timestamptz` | 创建时间 |
@@ -232,6 +232,7 @@
 - 每个可用于回答的 `file_chunks` 记录必须能映射到原文定位信息。
 - PDF MVP 至少保证 `page_number` 正确，`start_pos/end_pos` 或近似高亮可用。
 - 对非分页文档，使用 `locator` 保存 sheet、行列、段落等定位信息。
+- locator 由 `deepdoc` 统一生成：PDF/PPT/图片至少包含页码或区域信息，Excel 包含 sheet/row/col，DOCX 包含段落范围，TXT/Markdown 包含字符偏移。
 
 ## 5. 与邮箱验证码相关的约束
 

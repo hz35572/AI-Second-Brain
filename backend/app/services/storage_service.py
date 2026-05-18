@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+from pathlib import Path
 import uuid
 
 from fastapi import HTTPException, status
@@ -170,3 +171,23 @@ class StorageService:
             "file_size": len(body),
             "sha256": sha256,
         }
+
+    def delete_file(self, *, file_path: str) -> None:
+        storage_root = Path(self.settings.storage_dir).resolve()
+        abs_path = (storage_root / file_path).resolve()
+        if abs_path != storage_root and storage_root not in abs_path.parents:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "ERR_INVALID_ARGUMENT", "message": "参数错误", "details": {"field": "file_path"}},
+            )
+
+        if abs_path.is_file():
+            abs_path.unlink()
+
+        parent_dir = abs_path.parent
+        while parent_dir != storage_root and storage_root in parent_dir.parents:
+            try:
+                parent_dir.rmdir()
+            except OSError:
+                break
+            parent_dir = parent_dir.parent

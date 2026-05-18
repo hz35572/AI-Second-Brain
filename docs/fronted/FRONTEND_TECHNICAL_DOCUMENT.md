@@ -406,7 +406,7 @@ npm run start
 建议：
 
 - MVP 先保证“页码准确 + 该页内高亮近似可见”
-- 对 Word/Excel 采用 `locator` 或“片段文本匹配”作为降级定位策略
+- 对 Word/Excel 采用 deepdoc 生成的 `locator` 或“片段文本匹配”作为降级定位策略
 
 ---
 

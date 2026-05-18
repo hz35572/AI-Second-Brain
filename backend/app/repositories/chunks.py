@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.file_chunk import FileChunk
@@ -12,6 +12,26 @@ class FileChunkRepository:
 
     async def delete_by_file(self, file_id: uuid.UUID) -> None:
         await self.db.execute(delete(FileChunk).where(FileChunk.file_id == file_id))
+
+    async def list_by_file(
+        self,
+        *,
+        user_id: uuid.UUID,
+        file_id: uuid.UUID,
+        page: int,
+        page_size: int,
+    ) -> tuple[int, list[FileChunk]]:
+        count_stmt = select(func.count(FileChunk.id)).where(FileChunk.user_id == user_id, FileChunk.file_id == file_id)
+        total = int((await self.db.execute(count_stmt)).scalar_one())
+
+        stmt = (
+            select(FileChunk)
+            .where(FileChunk.user_id == user_id, FileChunk.file_id == file_id)
+            .order_by(FileChunk.chunk_index.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return total, list((await self.db.execute(stmt)).scalars().all())
 
     async def create(
         self,

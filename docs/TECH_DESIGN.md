@@ -47,6 +47,7 @@ backend/
     schemas/                # Pydantic request/response schemas
     repositories/           # database access layer
     services/               # business orchestration
+    deepdoc/                 # document parsing: parser registry, format parsers, OCR abstraction
     tasks/                  # background task helpers
   alembic/
     env.py
@@ -115,6 +116,13 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 - `conversations.scope_type` 和 `scope_ids` 用于支持 global/folder/file 范围问答
 - 文件删除必须级联清理数据库中的 chunks/tags/tasks，同时清除向量库记录和存储的原文件
 
+文件删除流程：
+
+1. 校验文件归属当前用户
+2. 删除该文件关联的 tasks、chunks、files 记录
+3. 删除本地/对象存储中的原始文件
+4. 向量库清理由后续向量层实现接入，当前阶段要求接口预留该清理步骤，且不得保留可检索残留
+
 ## 6. 邮箱验证码注册
 
 注册采用“先发码，再注册”的两步流程：
@@ -160,10 +168,18 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 1. 上传单文件或 multipart 分片
 2. 校验大小/哈希并持久化原始文件
 3. 在 PostgreSQL 中创建文件/任务元数据
-4. 解析 TXT/PDF/Word
-5. 在保留 locator 字段的前提下清洗并分块文本
+4. 通过 `app.deepdoc` 解析 TXT/PDF/Word/Excel/PPT/图片型文档，统一输出页面、结构块、全文与 locator
+5. 在保留 `page_number`、`start_pos/end_pos` 和 `locator` 字段的前提下清洗并分块文本
 6. 持久化 chunks 和后续向量负载
 7. 将文件标记为 `ready`，任务标记为 `completed`
+
+文档解析模块：
+
+- `deepdoc.service.parse()` 是 ingestion 调用的唯一入口
+- `deepdoc.registry.ParserRegistry` 按 MIME type、扩展名选择 parser，新增格式只需新增 parser 并注册
+- `deepdoc.parsers` 负责格式解析，MVP 稳定支持 TXT、PDF、DOCX，并为 Excel、PPT、图片 OCR 保留同一接口
+- `deepdoc.vision` 负责 OCR 抽象；OCR 默认由 `AISB_RAG_ENABLE_OCR` 控制，关闭时图片解析会明确失败
+- PDF/PPT/图片 locator 至少包含页码；Excel locator 使用 sheet/row/col；DOCX locator 使用段落范围；TXT/Markdown 使用字符偏移
 
 问答流程：
 

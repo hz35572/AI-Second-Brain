@@ -7,6 +7,8 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.deepdoc import ParseOptions
+from app.deepdoc.service import parse as parse_document
 from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
 from app.repositories.tasks import TaskRepository
@@ -38,6 +40,16 @@ def _chunk_text(text: str, *, chunk_size: int = 1000, overlap: int = 100) -> lis
     return chunks
 
 
+def _build_chunk_locator(locator: dict | None, *, start_pos: int, end_pos: int) -> dict | None:
+    if not locator:
+        return None
+    chunk_locator = dict(locator)
+    if chunk_locator.get("type") in {"text", "pdf", "ppt", "image"}:
+        chunk_locator["start"] = start_pos
+        chunk_locator["end"] = end_pos
+    return chunk_locator
+
+
 class IngestionService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -65,26 +77,32 @@ class IngestionService:
             f.status = "parsing"
             await self.db.commit()
 
-            pages = self._extract_pages(abs_path, f.mime_type, f.name)
-            f.page_count = len(pages) if pages else 0
-            f.word_count = sum(len(p.split()) for p in pages)
+            document = await parse_document(
+                file_path=abs_path,
+                mime_type=f.mime_type,
+                file_name=f.name,
+                options=ParseOptions(enable_ocr=self.settings.RAG_ENABLE_OCR),
+            )
+            f.page_count = document.page_count
+            f.word_count = document.word_count
 
             await self.tasks.set_progress(task_id, status="running", progress=45)
             await self.chunks.delete_by_file(file_id)
 
             chunk_index = 0
-            for page_idx, page_text in enumerate(pages, start=1):
-                cleaned = _clean_text(page_text)
+            for page in document.pages:
+                cleaned = _clean_text(page.text)
+                base_locator = page.locator.to_dict() if page.locator else None
                 for content, start_pos, end_pos in _chunk_text(cleaned):
                     await self.chunks.create(
                         user_id=user_id,
                         file_id=file_id,
                         chunk_index=chunk_index,
                         content=content,
-                        page_number=page_idx if f.page_count else None,
+                        page_number=page.page_number,
                         start_pos=start_pos,
                         end_pos=end_pos,
-                        locator=None,
+                        locator=_build_chunk_locator(base_locator, start_pos=start_pos, end_pos=end_pos),
                     )
                     chunk_index += 1
 
@@ -97,42 +115,4 @@ class IngestionService:
             f.error_message = str(e)
             await self.tasks.set_progress(task_id, status="failed", progress=0, error_message=str(e))
             await self.db.commit()
-
-    def _extract_pages(self, abs_path: str, mime_type: str | None, name: str) -> list[str]:
-        lower = name.lower()
-        if mime_type == "application/pdf" or lower.endswith(".pdf"):
-            try:
-                from pypdf import PdfReader  # type: ignore
-            except Exception as e:  # noqa: BLE001
-                raise RuntimeError("PDF 解析依赖缺失：请安装 pypdf") from e
-            reader = PdfReader(abs_path)
-            pages: list[str] = []
-            for p in reader.pages:
-                pages.append(p.extract_text() or "")
-            return pages
-
-        if (
-            mime_type
-            in {
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            }
-            or lower.endswith(".docx")
-        ):
-            try:
-                from docx import Document  # type: ignore
-            except Exception as e:  # noqa: BLE001
-                raise RuntimeError("Word 解析依赖缺失：请安装 python-docx") from e
-            doc = Document(abs_path)
-            text = "\n".join(p.text for p in doc.paragraphs)
-            return [text]
-
-        # TXT / Markdown fallback
-        with open(abs_path, "rb") as f:
-            raw = f.read()
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = raw.decode("utf-8", errors="replace")
-        return [text]
 

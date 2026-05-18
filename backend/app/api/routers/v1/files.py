@@ -1,11 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.utils import ok, parse_uuid
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
 from app.schemas.files import UploadInitRequest
 from app.services.file_service import FileService
@@ -71,6 +72,17 @@ async def complete_upload(
     return ok(data)
 
 
+@router.delete("/{file_id}")
+async def delete_file(
+    file_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    file_uuid = parse_uuid(file_id, field="file_id")
+    data = await FileService(db).delete_file(user_id=current_user.id, file_id=file_uuid)
+    return ok(data)
+
+
 @router.get("")
 async def list_files(
     folder_id: str | None = None,
@@ -105,3 +117,50 @@ async def list_files(
         for f in items
     ]
     return ok({"total": total, "items": out_items})
+
+
+@router.get("/{file_id}/chunks")
+async def list_file_chunks(
+    file_id: str,
+    page: int = 1,
+    page_size: int = 100,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    file_uuid = parse_uuid(file_id, field="file_id")
+    file = await FileRepository(db).get(file_uuid)
+    if not file or file.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ERR_FILE_NOT_FOUND", "message": "文件不存在", "details": {}},
+        )
+
+    safe_page = max(1, page)
+    safe_page_size = min(500, max(1, page_size))
+    total, chunks = await FileChunkRepository(db).list_by_file(
+        user_id=current_user.id,
+        file_id=file_uuid,
+        page=safe_page,
+        page_size=safe_page_size,
+    )
+    return ok(
+        {
+            "file_id": str(file_uuid),
+            "total": total,
+            "items": [
+                {
+                    "id": str(chunk.id),
+                    "chunk_index": chunk.chunk_index,
+                    "content": chunk.content,
+                    "page_number": chunk.page_number,
+                    "start_pos": chunk.start_pos,
+                    "end_pos": chunk.end_pos,
+                    "locator": chunk.locator,
+                    "token_count": chunk.token_count,
+                    "vector_id": chunk.vector_id,
+                    "created_at": chunk.created_at.isoformat(),
+                }
+                for chunk in chunks
+            ],
+        }
+    )

@@ -69,7 +69,6 @@ Citation（引用项，支持 PDF/分页与 Excel/非分页定位）：
 
 - PDF/分页文档优先使用 `page + highlight_positions(start/end)` 做跳转与高亮。
 - Excel 之类非分页文档使用 `locator` 定位；`highlight_positions` 可为空或忽略。
-
 ## 2. 认证模块
 
 ### 2.1 发送邮箱验证码
@@ -132,7 +131,7 @@ Response 201:
   "code": 0,
   "data": {
     "token": "jwt_token",
-    "expires_in": 86400,
+    "expires_in": 172800,
     "user": {
       "id": "uuid",
       "email": "user@example.com",
@@ -179,7 +178,7 @@ Response 200:
   "code": 0,
   "data": {
     "token": "jwt_token",
-    "expires_in": 86400,
+    "expires_in": 172800,
     "user": {
       "id": "uuid",
       "email": "user@example.com",
@@ -188,6 +187,10 @@ Response 200:
   }
 }
 ```
+
+说明：
+
+- 登录返回的 JWT 默认有效期为 2 天，即 `expires_in = 172800` 秒。
 
 ## 3. 文件管理模块
 
@@ -278,7 +281,37 @@ Response 202:
 }
 ```
 
-### 3.5 获取文件列表
+### 3.5 删除文件
+
+`DELETE /files/{file_id}`
+
+仅允许删除当前用户自己的文件。删除时服务端会同步清理：
+
+- `file_chunks`
+- `tags`
+- 与该文件关联的 `tasks`
+- 本地/对象存储中的原始文件
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "deleted": true,
+    "file_id": "uuid"
+  }
+}
+```
+
+错误码：
+
+| code | HTTP | 含义 |
+| --- | --- | --- |
+| `ERR_INVALID_ARGUMENT` | 400 | `file_id` 格式错误 |
+| `ERR_FILE_NOT_FOUND` | 404 | 文件不存在或不属于当前用户 |
+
+### 3.6 获取文件列表
 
 `GET /files?folder_id={uuid}&page=1&page_size=20&status=ready&tag=标签名`
 
@@ -306,7 +339,51 @@ Response 200:
 }
 ```
 
-### 3.6 获取上传/处理进度
+### 3.7 获取文件 chunks
+
+`GET /files/{file_id}/chunks?page=1&page_size=100`
+
+用于查询指定文件解析后生成的文本 chunks，按 `chunk_index` 升序返回。仅允许查询当前用户自己的文件。
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "file_id": "uuid",
+    "total": 2,
+    "items": [
+      {
+        "id": "uuid",
+        "chunk_index": 0,
+        "content": "原文 chunk 内容...",
+        "page_number": 1,
+        "start_pos": 0,
+        "end_pos": 1000,
+        "locator": {
+          "type": "pdf",
+          "page": 1,
+          "start": 0,
+          "end": 1000
+        },
+        "token_count": null,
+        "vector_id": null,
+        "created_at": "2026-04-23T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+错误码：
+
+| code | HTTP | 含义 |
+| --- | --- | --- |
+| `ERR_INVALID_ARGUMENT` | 400 | `file_id` 格式错误 |
+| `ERR_FILE_NOT_FOUND` | 404 | 文件不存在或不属于当前用户 |
+
+### 3.8 获取上传/处理进度
 
 `GET /tasks/{task_id}/progress`
 

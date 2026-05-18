@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.file import File
@@ -71,3 +71,6 @@ class FileRepository:
         f.status = status
         if error_message is not None:
             f.error_message = error_message
+
+    async def delete(self, file_id: uuid.UUID) -> None:
+        await self.db.execute(delete(File).where(File.id == file_id))

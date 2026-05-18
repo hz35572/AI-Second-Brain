@@ -70,6 +70,7 @@ async def test_full_flow_txt_upload_and_chat_sse():
         content = b"AI Second Brain is a knowledge base system.\nIt must cite sources."
         r = await client.post("/api/v1/files/upload", files={"file": ("doc.txt", content, "text/plain")}, headers=headers)
         assert r.status_code == 202
+        file_id = r.json()["data"]["file_id"]
         task_id = r.json()["data"]["task_id"]
 
         # Wait for ingestion background task
@@ -82,6 +83,14 @@ async def test_full_flow_txt_upload_and_chat_sse():
                 break
             await asyncio.sleep(0.05)
         assert status_ == "completed"
+
+        chunks_response = await client.get(f"/api/v1/files/{file_id}/chunks", headers=headers)
+        assert chunks_response.status_code == 200
+        chunks_data = chunks_response.json()["data"]
+        assert chunks_data["file_id"] == file_id
+        assert chunks_data["total"] >= 1
+        assert chunks_data["items"][0]["chunk_index"] == 0
+        assert "AI Second Brain" in chunks_data["items"][0]["content"]
 
         r = await client.post("/api/v1/chat/conversations", json={"title": "t", "scope_type": "global", "scope_ids": []}, headers=headers)
         assert r.status_code == 201
@@ -122,6 +131,17 @@ async def test_full_flow_txt_upload_and_chat_sse():
 
         # ensure citation markers exist in final text
         assert "[" in combined and "]" in combined
+
+        delete_response = await client.delete(f"/api/v1/files/{file_id}", headers=headers)
+        assert delete_response.status_code == 200
+        assert delete_response.json()["data"] == {"deleted": True, "file_id": file_id}
+
+        deleted_chunks_response = await client.get(f"/api/v1/files/{file_id}/chunks", headers=headers)
+        assert deleted_chunks_response.status_code == 404
+
+        files_response = await client.get("/api/v1/files", headers=headers)
+        assert files_response.status_code == 200
+        assert all(item["id"] != file_id for item in files_response.json()["data"]["items"])
 
 
 @pytest.mark.asyncio
@@ -168,6 +188,7 @@ async def test_email_verification_register_success_and_reuse_rejected():
         assert response.status_code == 201
         data = response.json()["data"]
         assert set(data.keys()) == {"token", "expires_in", "user"}
+        assert data["expires_in"] == 60 * 60 * 24 * 2
         assert data["user"]["email"] == email
 
         reused = await client.post(

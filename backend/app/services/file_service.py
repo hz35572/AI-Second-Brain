@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-import os
 import uuid
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
 from app.repositories.tasks import TaskRepository
 from app.services.ingestion_service import IngestionService
@@ -26,6 +25,7 @@ class FileService:
         self.db = db
         self.storage = StorageService()
         self.files = FileRepository(db)
+        self.chunks = FileChunkRepository(db)
         self.tasks = TaskRepository(db)
 
     async def upload_direct(self, *, user_id: uuid.UUID, upload: UploadFile, folder_id: uuid.UUID | None) -> dict:
@@ -91,3 +91,19 @@ class FileService:
 
         run_background(_run_ingest_background(user_id=user_id, file_id=f.id, task_id=task.id))
         return {"file_id": str(f.id), "task_id": str(task.id), "status": "parsing"}
+
+    async def delete_file(self, *, user_id: uuid.UUID, file_id: uuid.UUID) -> dict:
+        f = await self.files.get(file_id)
+        if not f or f.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "ERR_FILE_NOT_FOUND", "message": "文件不存在", "details": {}},
+            )
+
+        await self.tasks.delete_by_file(file_id)
+        await self.chunks.delete_by_file(file_id)
+        await self.files.delete(file_id)
+        await self.db.commit()
+
+        self.storage.delete_file(file_path=f.file_path)
+        return {"deleted": True, "file_id": str(file_id)}

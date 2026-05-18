@@ -12,6 +12,20 @@ from app.core.config import settings
 from app.db.session import close_db
 
 
+def _json_safe_validation_errors(errors: list[dict]) -> list[dict]:
+    safe_errors: list[dict] = []
+    for error in errors:
+        safe_error = dict(error)
+        ctx = safe_error.get("ctx")
+        if isinstance(ctx, dict):
+            safe_error["ctx"] = {
+                key: value if isinstance(value, str | int | float | bool | type(None)) else str(value)
+                for key, value in ctx.items()
+            }
+        safe_errors.append(safe_error)
+    return safe_errors
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Prepare local storage paths and close DB connections on shutdown."""
@@ -43,7 +57,11 @@ def create_app() -> FastAPI:
     async def validation_exception_handler(_request, exc: RequestValidationError):  # noqa: ANN001
         return JSONResponse(
             status_code=422,
-            content={"code": "ERR_INVALID_ARGUMENT", "message": "参数错误", "details": {"errors": exc.errors()}},
+            content={
+                "code": "ERR_INVALID_ARGUMENT",
+                "message": "参数错误",
+                "details": {"errors": _json_safe_validation_errors(exc.errors())},
+            },
         )
 
     app.add_middleware(

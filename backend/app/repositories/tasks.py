@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.task import Task
@@ -41,3 +41,6 @@ class TaskRepository:
             task.error_message = error_message
         if result is not None:
             task.result = result
+
+    async def delete_by_file(self, file_id: uuid.UUID) -> None:
+        await self.db.execute(delete(Task).where(Task.related_file_id == file_id))
