@@ -54,7 +54,7 @@ backend/.env
 backend/.venv/
 backend/.pytest_cache/
 backend/htmlcov/
-backend/app/tests/test_files/
+backend/tests/test_files/
 
 # misc
 *.pem
@@ -83,5 +83,5 @@ next-env.d.ts
 .env.test.local
 .env.production.local
 
-backend/tests/test_files/实时画面预览.pdf
-backend/tests/test_files/应用SDK.docx
+
+
