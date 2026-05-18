@@ -51,6 +51,25 @@ class Settings(BaseSettings):
     LOGFIRE_SERVICE_NAME: str = "AI-Second-Brain"
     LOGFIRE_ENVIRONMENT: str = "development"
 
+    # Logging
+    LOG_CONFIG_FILE: Path | None = None
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    LOG_CONSOLE_ENABLED: bool = True
+    LOG_CONSOLE_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None
+    LOG_CONSOLE_COLOR: bool = True
+    LOG_FILE_ENABLED: bool = True
+    LOG_FILE_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None
+    LOG_DIR: Path = Path(".data/logs")
+    LOG_FILE_NAME: str = "backend.log"
+    LOG_DAILY_FILE_NAME_FORMAT: str = "%Y-%m-%d.log"
+    LOG_FILE_MAX_BYTES: int = 10 * 1024 * 1024
+    LOG_FILE_BACKUP_COUNT: int = 5
+    LOG_ROTATION: Literal["daily", "size", "time"] = "daily"
+    LOG_ROTATION_WHEN: str = "midnight"
+    LOG_ROTATION_INTERVAL: int = 1
+    LOG_QUEUE_ENABLED: bool = True
+    LOG_SQLALCHEMY_ENABLED: bool = False
+
     # Database (PostgreSQL async)
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5433

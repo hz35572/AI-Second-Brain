@@ -74,6 +74,7 @@ backend/
 - 小写别名，例如 `settings.database_url` 和 `settings.storage_dir`，仅保留用于迁移兼容
 - PostgreSQL 可通过 `AISB_DATABASE_URL` 配置，也可通过 `AISB_POSTGRES_HOST`、`AISB_POSTGRES_PORT`、`AISB_POSTGRES_USER`、`AISB_POSTGRES_PASSWORD`、`AISB_POSTGRES_DB` 配置
 - Alembic 使用 `settings.DATABASE_URL_SYNC`；应用运行时使用 `settings.DATABASE_URL`
+- 日志由 `app.core.logging_config.configure_logging()` 统一初始化，默认读取 `AISB_LOG_*` 配置；如设置 `AISB_LOG_CONFIG_FILE`，则从 JSON 格式的 `logging.config.dictConfig` 配置文件加载完整日志配置。详细使用指南见 `docs/backend/logging.md`
 
 最小本地配置：
 
@@ -85,6 +86,40 @@ AISB_REDIS_URL=redis://localhost:6379/0
 AISB_STORAGE_DIR=.data/storage
 AISB_UPLOAD_TMP_DIR=.data/uploads
 ```
+
+日志配置：
+
+```env
+AISB_LOG_LEVEL=INFO
+AISB_LOG_CONSOLE_ENABLED=true
+AISB_LOG_CONSOLE_COLOR=true
+AISB_LOG_FILE_ENABLED=true
+AISB_LOG_DIR=.data/logs
+AISB_LOG_ROTATION=daily
+AISB_LOG_DAILY_FILE_NAME_FORMAT=%Y-%m-%d.log
+AISB_LOG_FILE_MAX_BYTES=10485760
+AISB_LOG_FILE_BACKUP_COUNT=5
+AISB_LOG_QUEUE_ENABLED=true
+```
+
+日志方案要求：
+
+- 统一格式：`timestamp level [logger] [pid=process tid=thread] message`
+- 级别语义：`DEBUG` 用于开发诊断，`INFO` 用于生命周期与关键业务状态，`WARNING` 用于可恢复异常或降级，`ERROR` 用于请求/任务失败，`CRITICAL` 用于进程级不可恢复故障
+- 开发环境默认启用彩色控制台日志；生产环境默认启用文件日志和队列异步写入，减少请求线程阻塞
+- 文件日志默认使用 `AISB_LOG_ROTATION=daily`，每天写入 `.data/logs/YYYY-MM-DD.log`；也支持 `AISB_LOG_ROTATION=size` 的 `RotatingFileHandler` 和 `AISB_LOG_ROTATION=time` 的 `TimedRotatingFileHandler`
+- 默认过滤器会脱敏 `password`、`secret`、`token`、`api_key`、`authorization`、`cookie` 等凭据值
+- 未捕获异常由 FastAPI 全局异常处理器记录堆栈，并向客户端返回统一内部错误
+- 自定义扩展可通过调用 `configure_logging(settings, handlers=[...], filters=[...])` 注入 handler/filter；复杂场景优先使用 `AISB_LOG_CONFIG_FILE` 指向 JSON dictConfig 文件
+- 日志不得记录用户原始文档内容、密码、验证码、邮件正文或完整检索上下文；排障需要原文片段时，必须先在 TDD 中落脱敏、开关和采样策略
+
+最佳实践：
+
+- 模块中使用 `logger = logging.getLogger(__name__)` 或 `app.core.logging_config.get_logger(__name__)`
+- 使用参数化日志：`logger.info("file ready: file_id=%s", file_id)`，避免 f-string 提前格式化带来的开销
+- 异常分支使用 `logger.exception("...")` 或 `logger.error("...", exc_info=True)`，确保堆栈可追踪
+- SSE 与上传链路记录任务 ID、文件 ID、耗时和状态，不记录用户问题全文或文档原文
+- 测试环境可设置 `AISB_LOG_CONSOLE_ENABLED=false`、`AISB_LOG_FILE_ENABLED=false` 降低噪声
 
 邮箱验证码注册额外配置：
 

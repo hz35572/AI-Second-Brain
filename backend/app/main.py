@@ -1,4 +1,5 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,7 +10,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.logging_config import configure_logging, stop_logging_listener
 from app.db.session import close_db
+
+configure_logging(settings)
+logger = logging.getLogger(__name__)
 
 
 def _json_safe_validation_errors(errors: list[dict]) -> list[dict]:
@@ -32,8 +37,10 @@ async def lifespan(app: FastAPI):
     _ = app
     os.makedirs(settings.storage_dir, exist_ok=True)
     os.makedirs(settings.upload_tmp_dir, exist_ok=True)
+    logger.info("Application startup complete in %s environment", settings.ENVIRONMENT)
     yield
     await close_db()
+    stop_logging_listener()
 
 
 def create_app() -> FastAPI:
@@ -62,6 +69,14 @@ def create_app() -> FastAPI:
                 "message": "参数错误",
                 "details": {"errors": _json_safe_validation_errors(exc.errors())},
             },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(_request, exc: Exception):  # noqa: ANN001
+        logger.exception("Unhandled application exception: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"code": "ERR_INTERNAL_SERVER_ERROR", "message": "服务器内部错误", "details": {}},
         )
 
     app.add_middleware(

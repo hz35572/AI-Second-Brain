@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import uuid
@@ -13,12 +14,23 @@ from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
 from app.repositories.tasks import TaskRepository
 
+logger = logging.getLogger(__name__)
+
+PARSED_TEXT_PREVIEW_CHARS = 1000
+
 
 def _clean_text(text: str) -> str:
     text = text.replace("\x00", "")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def _preview_text(text: str, *, max_chars: int = PARSED_TEXT_PREVIEW_CHARS) -> str:
+    text = _clean_text(text)
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}... [truncated, total_chars={len(text)}]"
 
 
 def _chunk_text(text: str, *, chunk_size: int = 1000, overlap: int = 100) -> list[tuple[str, int, int]]:
@@ -85,6 +97,24 @@ class IngestionService:
             )
             f.page_count = document.page_count
             f.word_count = document.word_count
+            
+            logger.info(
+                "Parsed uploaded document file_id=%s task_id=%s file_name=%s page_count=%s word_count=%s",
+                file_id,
+                task_id,
+                f.name,
+                document.page_count,
+                document.word_count,
+            )
+            for page in document.pages:
+                logger.debug(
+                    "Parsed document page content file_id=%s task_id=%s page_number=%s text_chars=%s preview=%r",
+                    file_id,
+                    task_id,
+                    page.page_number,
+                    len(page.text),
+                    _preview_text(page.text),
+                )
 
             await self.tasks.set_progress(task_id, status="running", progress=45)
             await self.chunks.delete_by_file(file_id)
