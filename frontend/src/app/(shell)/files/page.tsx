@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import {
+  Folder,
   FolderOpen,
   Upload,
   Grid3X3,
@@ -31,7 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { FileItem } from "@/lib/api/types";
+import type { FileItem, Folder } from "@/lib/api/types";
 
 const mockFiles: FileItem[] = [
   {
@@ -81,6 +82,10 @@ function FileIcon({ mimeType }: { mimeType: string }) {
   return <FileText className="h-8 w-8 text-[#6B7280]" aria-label="File" />;
 }
 
+function FolderIcon() {
+  return <Folder className="h-8 w-8 text-yellow-500" aria-label="Folder" />;
+}
+
 function StatusBadge({ status }: { status: FileItem["status"] }) {
   const config = {
     ready: { label: "已完成", className: "bg-green-50 text-green-700 border-green-200" },
@@ -99,7 +104,8 @@ function StatusBadge({ status }: { status: FileItem["status"] }) {
 export default function FilesPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
-  const [files] = useState<FileItem[]>(mockFiles);
+  const [files, setFiles] = useState<FileItem[]>(mockFiles);
+  const [folders, setFolders] = useState<Folder[]>([]);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -109,6 +115,10 @@ export default function FilesPage() {
   const [folderName, setFolderName] = useState("");
 
   const filteredFiles = files.filter((f) =>
+    f.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredFolders = folders.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -141,7 +151,14 @@ export default function FilesPage() {
   const handleCreateFolder = useCallback(() => {
     const trimmed = folderName.trim();
     if (!trimmed) return;
-    console.log("Create folder:", trimmed);
+    const newFolder: Folder = {
+      id: `folder-${Date.now()}`,
+      name: trimmed,
+      parent_id: null,
+      path: `/${trimmed}`,
+      file_count: 0,
+    };
+    setFolders((prev) => [...prev, newFolder]);
     setFolderName("");
     setCreateFolderOpen(false);
   }, [folderName]);
@@ -267,6 +284,39 @@ export default function FilesPage() {
       <div className="flex-1 overflow-auto p-6">
         {viewMode === "grid" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredFolders.map((folder) => (
+              <div
+                key={folder.id}
+                className="group border border-[#E5E7EB] rounded-xl p-4 hover:shadow-md transition-shadow bg-white cursor-pointer"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <FolderIcon />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>打开</DropdownMenuItem>
+                      <DropdownMenuItem>重命名</DropdownMenuItem>
+                      <DropdownMenuItem>移动</DropdownMenuItem>
+                      <DropdownMenuItem className="text-red-600">删除</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <h3 className="text-sm font-medium text-[#111827] truncate mb-1">
+                  {folder.name}
+                </h3>
+                <p className="text-xs text-[#6B7280] line-clamp-2 mb-2">
+                  {folder.file_count ?? 0} 个文件
+                </p>
+              </div>
+            ))}
             {filteredFiles.map((file) => (
               <div
                 key={file.id}
@@ -326,6 +376,40 @@ export default function FilesPage() {
                 </tr>
               </thead>
               <tbody>
+                {filteredFolders.map((folder) => (
+                  <tr
+                    key={folder.id}
+                    className="border-t border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors cursor-pointer"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <FolderIcon />
+                        <span className="font-medium text-[#111827]">{folder.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-[#6B7280] max-w-xs truncate">
+                      {folder.file_count ?? 0} 个文件
+                    </td>
+                    <td className="px-4 py-3"></td>
+                    <td className="px-4 py-3"></td>
+                    <td className="px-4 py-3 text-[#6B7280]">-</td>
+                    <td className="px-4 py-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>打开</DropdownMenuItem>
+                          <DropdownMenuItem>重命名</DropdownMenuItem>
+                          <DropdownMenuItem>移动</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600">删除</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
                 {filteredFiles.map((file) => (
                   <tr
                     key={file.id}
@@ -377,7 +461,7 @@ export default function FilesPage() {
           </div>
         )}
 
-        {filteredFiles.length === 0 && (
+        {filteredFiles.length === 0 && filteredFolders.length === 0 && (
           <div className="text-center py-12">
             <FolderOpen className="h-12 w-12 text-[#E5E7EB] mx-auto mb-3" />
             <p className="text-[#6B7280]">暂无文件</p>
