@@ -19,7 +19,7 @@ MVP 元数据存储统一使用 PostgreSQL，不接受临时改回 SQLite 的实
 - Backend：FastAPI、SQLAlchemy 2.x async、Alembic、Pydantic Settings
 - Metadata DB：PostgreSQL 16
 - Cache / progress / future queue：Redis
-- Vector DB：Qdrant
+- Vector DB：Qdrant（开发/测试环境在 Qdrant 不可用时可使用进程内 fallback，生产必须使用 Qdrant）
 - Storage：本地文件系统（开发默认），后续兼容 MinIO/S3
 - Frontend：Next.js App Router、TypeScript、Tailwind CSS、Zustand
 - Streaming：SSE，事件顺序为 `chunk* -> citation? -> done`
@@ -204,8 +204,8 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 2. 校验大小/哈希并持久化原始文件
 3. 在 PostgreSQL 中创建文件/任务元数据
 4. 通过 `app.deepdoc` 解析 TXT/PDF/Word/Excel/PPT/图片型文档，统一输出页面、结构块、全文与 locator
-5. 在保留 `page_number`、`start_pos/end_pos` 和 `locator` 字段的前提下清洗并分块文本
-6. 持久化 chunks 和后续向量负载
+5. 在保留 `page_number`、`start_pos/end_pos` 和 `locator` 字段的前提下清洗并分块文本；Markdown 使用结构感知分块，按标题层级聚合段落、列表、代码块、表格和提示块，chunk 内补充标题上下文并保持 locator 字符偏移可回溯
+6. 持久化 chunks，使用 `app.rag.embeddings.EmbeddingClient` 生成向量，并通过 `app.rag.vector_store.QdrantVectorStore` 写入 Qdrant
 7. 将文件标记为 `ready`，任务标记为 `completed`
 
 文档解析模块：
@@ -219,11 +219,18 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 问答流程：
 
 1. 解析用户范围：`global`、`folder` 或 `file`
-2. 按用户和范围过滤，从向量库检索 top-k chunks
-3. 用编号上下文块构建 prompt
-4. 通过 SSE 流式输出 LLM 结果
-5. 按句校验引用
-6. 如果引用校验失败，重试一次引用修复；如果仍然无效，则返回有依据的降级回答，而不是输出未经支持的结论
+2. `app.rag.retriever.RAGRetriever` 按 `user_id` 和范围过滤，从 Qdrant 检索 top-k chunks，并回查 PostgreSQL 补齐文件名与 locator
+3. `app.rag.generator.RAGGenerator` 用编号上下文块构建 prompt；有 OpenAI key 时调用 LLM，无 key 的本地/测试环境使用抽取式回答
+4. `app.rag.pipeline.RAGPipeline` 校验逐句引用，失败时重试一次引用修复；仍失败则返回“知识库中未找到相关内容。”
+5. Chat SSE 保持 `chunk* -> citation? -> done`，citation 载荷仍来自 `docs/API.md` 的 Citation 结构
+
+RAG 模块边界：
+
+- `app.rag.embeddings`：默认 `text-embedding-3-small`，`text-embedding-3-large` 可配置；向量维度按模型确定
+- `app.rag.vector_store`：Qdrant collection 初始化、upsert、search、按文件删除；payload 必须包含 `user_id/file_id/chunk_id/folder_id/page_number/chunk_index/locator`
+- `app.rag.retriever`：global/file/folder scope 解析与用户隔离
+- `app.rag.generator`：严格基于上下文生成，要求每个事实句或要点包含引用标记
+- `app.rag.pipeline`：retrieve -> generate -> citation validate/repair -> degrade 编排
 
 ## 8. API 与 SSE 协议
 
@@ -243,6 +250,8 @@ chunk* -> citation? -> done
 - Chat TTFB：从请求接收到首个 SSE `chunk` 发出，目标 < 2s
 - 10MB 建库时间：从 upload init / 直接上传到文件 `ready`，目标 < 15s
 - 100MB 文件可以异步运行更久，但必须提供稳定进度并避免进程崩溃
+- Retrieval latency：query embedding + Qdrant search + DB hydrate，建议 p95 < 800ms
+- Citation quality：事实句引用覆盖率 100%，无效引用率 0
 
 ## 10. 安全与隐私
 
@@ -265,6 +274,7 @@ chunk* -> citation? -> done
 - 任务进度响应契约
 - Chat SSE 事件顺序
 - CitationValidator 的逐句引用校验与降级行为
+- RAG embedding/vector store/retriever/pipeline 的 mock 单元测试
 
 验收标准：
 

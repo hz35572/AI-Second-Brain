@@ -7,6 +7,7 @@ from app.deepdoc.parsers.base import ParseError
 from app.deepdoc.parsers.pdf import PdfParser
 from app.deepdoc.registry import ParserRegistry
 from app.deepdoc.service import parse
+from app.services.ingestion_service import _chunk_markdown_page
 
 
 def test_parser_registry_resolves_by_mime_type_and_extension() -> None:
@@ -73,10 +74,121 @@ async def test_markdown_parser_returns_blocks_and_locator(tmp_path) -> None:
     assert document.pages[0].locator is not None
     assert document.pages[0].locator.to_dict() == {"type": "markdown", "start": 0, "end": len(content)}
     assert [block.kind for block in document.blocks] == ["title", "paragraph", "title", "paragraph"]
-    assert document.blocks[0].text == "Deepdoc"
-    assert document.blocks[0].metadata == {"level": 1}
+    assert document.blocks[0].text == "# Deepdoc"
+    assert document.blocks[0].metadata == {"level": 1, "markdown_type": "heading", "path": ["Deepdoc"]}
     assert document.blocks[0].locator is not None
     assert document.blocks[0].locator.to_dict() == {"type": "markdown", "start": 0, "end": 9}
+    assert document.blocks[3].text == "- cited item"
+    assert document.blocks[3].metadata["markdown_type"] == "list"
+
+
+@pytest.mark.asyncio
+async def test_markdown_parser_preserves_structural_blocks_and_locators(tmp_path) -> None:
+    file_path = tmp_path / "structured.md"
+    content = """# Guide
+
+Intro paragraph spans
+two source lines.
+
+- first item
+- second item
+  continued detail
+
+```python
+def hello():
+    return "world"
+```
+
+| Name | Value |
+| --- | --- |
+| A | 1 |
+
+<Warning title="注意">
+Keep this warning together.
+</Warning>
+"""
+    file_path.write_text(content, encoding="utf-8")
+
+    document = await parse(
+        file_path=str(file_path),
+        mime_type="text/markdown",
+        file_name="structured.md",
+        options=ParseOptions(enable_ocr=False),
+    )
+
+    markdown_types = [block.metadata.get("markdown_type") for block in document.blocks]
+
+    assert markdown_types == ["heading", "paragraph", "list", "code", "table", "html_block"]
+    assert "- first item\n- second item\n  continued detail" in document.blocks[2].text
+    assert 'return "world"' in document.blocks[3].text
+    assert document.blocks[4].kind == "table"
+    assert document.blocks[5].metadata["tag"] == "Warning"
+    for block in document.blocks:
+        assert block.locator is not None
+        assert content[block.locator.start : block.locator.end] == block.text
+
+
+@pytest.mark.asyncio
+async def test_markdown_chunk_builder_keeps_blocks_and_heading_context(tmp_path) -> None:
+    file_path = tmp_path / "chunks.md"
+    content = """# Product
+
+## Setup
+
+Intro text.
+
+- install SDK
+- configure credentials
+
+```cpp
+engine->enableCustomVideoCapture(true, &captureConfig);
+```
+
+| Type | API |
+| --- | --- |
+| Raw | sendCustomVideoCaptureRawData |
+
+## Troubleshooting
+
+""" + "\n\n".join(f"Paragraph {index} " + ("detail " * 20) for index in range(8))
+    file_path.write_text(content, encoding="utf-8")
+
+    document = await parse(
+        file_path=str(file_path),
+        mime_type="text/markdown",
+        file_name="chunks.md",
+        options=ParseOptions(enable_ocr=False),
+    )
+
+    chunks = _chunk_markdown_page(document.pages[0], chunk_size=350)
+
+    assert len(chunks) > 1
+    assert chunks[0].content.startswith("# Product\n\n## Setup")
+    assert "- install SDK\n- configure credentials" in chunks[0].content
+    assert "engine->enableCustomVideoCapture" in chunks[0].content
+    assert "| Raw | sendCustomVideoCaptureRawData |" in chunks[0].content
+    assert all(chunk.locator == {"type": "markdown", "start": chunk.start_pos, "end": chunk.end_pos} for chunk in chunks)
+    assert any(chunk.content.startswith("# Product\n\n## Troubleshooting") for chunk in chunks[1:])
+
+
+@pytest.mark.asyncio
+async def test_markdown_chunk_builder_handles_real_custom_video_capture_fixture() -> None:
+    file_path = "tests/test_files/custom-video-capture.md"
+
+    document = await parse(
+        file_path=file_path,
+        mime_type="text/markdown",
+        file_name="custom-video-capture.md",
+        options=ParseOptions(enable_ocr=False),
+    )
+
+    chunks = _chunk_markdown_page(document.pages[0])
+
+    assert chunks
+    assert all(chunk.locator == {"type": "markdown", "start": chunk.start_pos, "end": chunk.end_pos} for chunk in chunks)
+    assert any("```mermaid" in chunk.content and "sequenceDiagram" in chunk.content for chunk in chunks)
+    assert any("<Warning title=\"注意\">" in chunk.content and "</Warning>" in chunk.content for chunk in chunks)
+    assert any("|视频帧类型|bufferType|发送视频帧数据接口|" in chunk.content for chunk in chunks)
 
 
 @pytest.mark.asyncio

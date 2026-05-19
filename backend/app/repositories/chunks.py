@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.file_chunk import FileChunk
@@ -58,6 +58,9 @@ class FileChunkRepository:
         self.db.add(chunk)
         await self.db.flush()
         return chunk
+
+    async def set_vector_id(self, *, chunk_id: uuid.UUID, vector_id: str) -> None:
+        await self.db.execute(update(FileChunk).where(FileChunk.id == chunk_id).values(vector_id=vector_id))
 
     async def search(
         self,

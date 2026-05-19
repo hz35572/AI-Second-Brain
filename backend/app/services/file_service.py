@@ -6,6 +6,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.rag.vector_store import QdrantVectorStore
 from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
 from app.repositories.tasks import TaskRepository
@@ -27,6 +28,7 @@ class FileService:
         self.files = FileRepository(db)
         self.chunks = FileChunkRepository(db)
         self.tasks = TaskRepository(db)
+        self.vector_store = QdrantVectorStore()
 
     async def upload_direct(self, *, user_id: uuid.UUID, upload: UploadFile, folder_id: uuid.UUID | None) -> dict:
         body = await upload.read()
@@ -100,6 +102,7 @@ class FileService:
                 detail={"code": "ERR_FILE_NOT_FOUND", "message": "文件不存在", "details": {}},
             )
 
+        await self.vector_store.delete_by_file(user_id=user_id, file_id=file_id)
         await self.tasks.delete_by_file(file_id)
         await self.chunks.delete_by_file(file_id)
         await self.files.delete(file_id)
