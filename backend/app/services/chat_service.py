@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.rag.pipeline import RAGPipeline
+from app.agent.workflow import QAAgentWorkflow
 from app.repositories.conversations import ConversationRepository
 from app.repositories.messages import MessageRepository
 
@@ -21,7 +21,7 @@ class ChatService:
         self.db = db
         self.conversations = ConversationRepository(db)
         self.messages = MessageRepository(db)
-        self.rag = RAGPipeline(db)
+        self.agent = QAAgentWorkflow(db)
 
     async def generate_answer(
         self,
@@ -36,7 +36,7 @@ class ChatService:
             raise ValueError("conversation not found")
 
         scope_ids = [uuid.UUID(str(x)) for x in (conv.scope_ids or [])]
-        result = await self.rag.answer(
+        result = await self.agent.answer(
             user_id=user_id,
             question=question,
             scope_type=conv.scope_type,

@@ -1,165 +1,221 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useChatStore } from "@/store/chat";
+import { useUIStore } from "@/store/ui";
+import { useAuthStore } from "@/store/auth";
+import { cn } from "@/lib/utils";
+import { createConversation, getConversations, getMessages, sendChatMessage } from "@/lib/api/chat";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ScopeSelector } from "@/components/chat/ScopeSelector";
-import { useStreamingText } from "@/lib/sse/useStreamingText";
-import { apiEventSource } from "@/lib/api/client";
-import type { Message, Citation } from "@/lib/api/types";
-import { Pencil, Share2, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-
-const mockMessages: Message[] = [
-  {
-    id: "1",
-    role: "user",
-    content: "总结我的研究论文",
-    created_at: "2026-04-26T10:00:00Z",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "根据您的研究论文，主要观点包括：[1] 提出了基于 Transformer 的新型注意力机制；[2] 在多个基准数据集上取得了 SOTA 结果；[3] 分析了计算效率与模型性能之间的权衡关系。",
-    citations: [
-      {
-        index: 1,
-        chunk_id: "c1",
-        file_id: "f1",
-        file_name: "research_paper.pdf",
-        page: 3,
-        text: "提出了基于 Transformer 的新型注意力机制",
-        highlight_positions: { start: 120, end: 180 },
-      },
-      {
-        index: 2,
-        chunk_id: "c2",
-        file_id: "f1",
-        file_name: "research_paper.pdf",
-        page: 5,
-        text: "在多个基准数据集上取得了 SOTA 结果",
-        highlight_positions: { start: 45, end: 95 },
-      },
-    ],
-    created_at: "2026-04-26T10:00:05Z",
-  },
-];
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import type { Message } from "@/lib/api/types";
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
-  const [isLoading, setIsLoading] = useState(false);
-  const { text: streamingText, append, reset } = useStreamingText();
-  const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
-  const sseRef = useRef<{ close: () => void } | null>(null);
+  const searchParams = useSearchParams();
+  const conversationIdFromUrl = searchParams.get("conversation");
+
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const {
+    conversations,
+    currentConversationId,
+    messages,
+    isLoading,
+    streamingContent,
+    streamingCitations,
+    setConversations,
+    addConversation,
+    setCurrentConversationId,
+    setMessages,
+    addMessage,
+    setIsLoading,
+    appendStreamingContent,
+    addStreamingCitations,
+    resetStreaming,
+    updateConversationTitle,
+  } = useChatStore();
+  const { scope } = useUIStore();
+
+  const [error, setError] = useState("");
   const streamingContentRef = useRef("");
-  const streamingCitationsRef = useRef<Citation[]>([]);
+  const streamingCitationsRef = useRef(streamingCitations);
+  const sseRef = useRef<{ close: () => void } | null>(null);
 
   useEffect(() => {
-    streamingContentRef.current = streamingText;
-  }, [streamingText]);
+    streamingContentRef.current = streamingContent;
+  }, [streamingContent]);
 
   useEffect(() => {
     streamingCitationsRef.current = streamingCitations;
   }, [streamingCitations]);
 
+  useEffect(() => {
+    if (conversationIdFromUrl) {
+      setCurrentConversationId(conversationIdFromUrl);
+    }
+  }, [conversationIdFromUrl, setCurrentConversationId]);
+
+  useQuery({
+    queryKey: ["conversations"],
+    queryFn: async () => {
+      const data = await getConversations({ page: 1, page_size: 50 });
+      setConversations(data.items);
+      return data;
+    },
+    enabled: !!user,
+    staleTime: 30 * 1000,
+  });
+
+  useQuery({
+    queryKey: ["messages", currentConversationId],
+    queryFn: async () => {
+      if (!currentConversationId) return { items: [] };
+      const data = await getMessages(currentConversationId, { page: 1, page_size: 100 });
+      setMessages(data.items);
+      return data;
+    },
+    enabled: !!currentConversationId && !!user,
+    staleTime: 30 * 1000,
+  });
+
   const handleSend = useCallback(
-    (content: string) => {
+    async (content: string) => {
+      setError("");
+      let convId = currentConversationId;
+
+      if (!convId) {
+        try {
+          const conv = await createConversation({
+            title: content.slice(0, 50) || "新对话",
+            scope_type: scope.type,
+            scope_ids: scope.type === "global" ? [] : (scope as { ids: string[] }).ids,
+          });
+          addConversation(conv);
+          convId = conv.id;
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "创建对话失败");
+          return;
+        }
+      }
+
       const userMessage: Message = {
         id: `u-${Date.now()}`,
         role: "user",
         content,
         created_at: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      addMessage(userMessage);
       setIsLoading(true);
-      reset();
-      setStreamingCitations([]);
+      resetStreaming();
       streamingContentRef.current = "";
       streamingCitationsRef.current = [];
 
-      sseRef.current = apiEventSource("/chat/conversations/test/messages", {
-        body: { content, stream: true },
-        onMessage: (data: unknown) => {
-          const msg = data as { type: string; content?: string; citations?: Citation[] };
-          if (msg.type === "chunk" && msg.content) {
-            append(msg.content);
-          } else if (msg.type === "citation" && msg.citations) {
-            setStreamingCitations((prev) => [...prev, ...msg.citations!]);
-          } else if (msg.type === "done") {
-            setIsLoading(false);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `a-${Date.now()}`,
-                role: "assistant",
-                content: streamingContentRef.current || "暂无回答",
-                citations: streamingCitationsRef.current,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-            reset();
-            setStreamingCitations([]);
+      sseRef.current = sendChatMessage(convId, content, {
+        onChunk: (chunk) => {
+          streamingContentRef.current += chunk;
+          appendStreamingContent(chunk);
+        },
+        onCitation: (citations) => {
+          addStreamingCitations(citations);
+          streamingCitationsRef.current = [...streamingCitationsRef.current, ...citations];
+        },
+        onDone: (metadata) => {
+          setIsLoading(false);
+          const assistantMessage: Message = {
+            id: `a-${Date.now()}`,
+            role: "assistant",
+            content: streamingContentRef.current || "暂无回答",
+            citations: streamingCitationsRef.current,
+            created_at: new Date().toISOString(),
+          };
+          addMessage(assistantMessage);
+          resetStreaming();
+          queryClient.invalidateQueries({ queryKey: ["messages", convId] });
+          if (metadata) {
+            console.log("Chat metadata:", metadata);
           }
         },
-        onError: () => {
+        onError: (err) => {
           setIsLoading(false);
-        },
-        onDone: () => {
-          setIsLoading(false);
+          setError(err.message || "发送消息失败");
         },
       });
     },
-    [append, reset]
+    [
+      currentConversationId,
+      scope,
+      addConversation,
+      addMessage,
+      setIsLoading,
+      resetStreaming,
+      appendStreamingContent,
+      addStreamingCitations,
+      queryClient,
+    ]
   );
+
+  const handleStop = useCallback(() => {
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+      setIsLoading(false);
+    }
+  }, [setIsLoading]);
+
+  const displayMessages = currentConversationId
+    ? messages
+    : messages.filter((m) => m.id.startsWith("u-") || m.id.startsWith("a-"));
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-[#E5E7EB]">
-        <h2 className="text-base font-semibold text-[#111827]">
-          新对话
-        </h2>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Pencil className="h-4 w-4 text-[#6B7280]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>编辑标题</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Share2 className="h-4 w-4 text-[#6B7280]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>分享</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Download className="h-4 w-4 text-[#6B7280]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>导出</TooltipContent>
-          </Tooltip>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E7EB] bg-white">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-[#111827]">
+            {currentConversationId
+              ? conversations.find((c) => c.id === currentConversationId)?.title || "对话"
+              : "新对话"}
+          </h2>
         </div>
+        <ScopeSelector />
       </div>
 
-      <MessageList
-        messages={messages}
-        streamingContent={isLoading ? streamingText : undefined}
-        streamingCitations={streamingCitations}
-      />
+      {error && (
+        <Alert variant="destructive" className="mx-4 mt-3 shrink-0">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      <div className="px-4 pb-2">
-        <div className="max-w-3xl mx-auto mb-2">
-          <ScopeSelector />
-        </div>
+      <div className="flex-1 overflow-hidden">
+        <MessageList
+          messages={displayMessages}
+          streamingContent={streamingContent}
+          streamingCitations={streamingCitations}
+          isLoading={isLoading}
+        />
       </div>
-      <ChatComposer onSend={handleSend} disabled={isLoading} />
+
+      <div className="shrink-0 border-t border-[#E5E7EB] bg-white px-4 py-3">
+        {isLoading && (
+          <div className="flex items-center gap-2 mb-2 text-xs text-[#6B7280]">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            AI 正在思考...
+            <button
+              onClick={handleStop}
+              className="text-[#EF4444] hover:underline ml-2"
+            >
+              停止生成
+            </button>
+          </div>
+        )}
+        <ChatComposer onSend={handleSend} disabled={isLoading} />
+      </div>
     </div>
   );
 }

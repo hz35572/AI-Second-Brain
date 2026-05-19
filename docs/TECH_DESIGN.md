@@ -30,7 +30,7 @@ MVP 元数据存储统一使用 PostgreSQL，不接受临时改回 SQLite 的实
 backend/
   app/
     main.py                 # FastAPI app factory, lifespan, CORS, v1 router
-    agents/                 # Agent implementation
+    agent/                  # LangGraph Q&A agent workflow
     api/
       routers/              # auth/files/folders/chat/tasks routes
         v1/                 # v1 version router
@@ -85,6 +85,15 @@ AISB_SECRET_KEY=change-me-in-production-use-openssl-rand-hex-32
 AISB_REDIS_URL=redis://localhost:6379/0
 AISB_STORAGE_DIR=.data/storage
 AISB_UPLOAD_TMP_DIR=.data/uploads
+```
+
+LLM 可通过 OpenAI-compatible 接口配置：
+
+```env
+AISB_LLM_PROVIDER=dashscope
+AISB_OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+AISB_OPENAI_API_KEY=<provider-api-key>
+AISB_AI_MODEL=deepseek-v4-flash
 ```
 
 日志配置：
@@ -219,18 +228,20 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 问答流程：
 
 1. 解析用户范围：`global`、`folder` 或 `file`
-2. `app.rag.retriever.RAGRetriever` 按 `user_id` 和范围过滤，从 Qdrant 检索 top-k chunks，并回查 PostgreSQL 补齐文件名与 locator
-3. `app.rag.generator.RAGGenerator` 用编号上下文块构建 prompt；有 OpenAI key 时调用 LLM，无 key 的本地/测试环境使用抽取式回答
-4. `app.rag.pipeline.RAGPipeline` 校验逐句引用，失败时重试一次引用修复；仍失败则返回“知识库中未找到相关内容。”
-5. Chat SSE 保持 `chunk* -> citation? -> done`，citation 载荷仍来自 `docs/API.md` 的 Citation 结构
+2. `app.agent.workflow.QAAgentWorkflow` 使用 LangGraph 编排最小问答闭环：`load_context -> retrieve -> generate -> validate -> emit`
+3. `app.rag.retriever.RAGRetriever` 按 `user_id` 和范围过滤，从 Qdrant 检索 top-k chunks，并回查 PostgreSQL 补齐文件名与 locator
+4. `app.rag.generator.RAGGenerator` 用编号上下文块构建 prompt；有 `AISB_OPENAI_API_KEY` 时通过 OpenAI-compatible Chat Completions 接口调用 LLM，可用 `AISB_OPENAI_BASE_URL` 指向阿里云百炼等兼容服务；无 key 的本地/测试环境使用抽取式回答
+5. LangGraph `validate` 节点校验逐句引用，失败时重试一次引用修复；仍失败则返回“知识库中未找到相关内容。”
+6. Chat SSE 保持 `chunk* -> citation? -> done`，citation 载荷仍来自 `docs/API.md` 的 Citation 结构
 
 RAG 模块边界：
 
-- `app.rag.embeddings`：默认 `text-embedding-3-small`，`text-embedding-3-large` 可配置；向量维度按模型确定
+- `app.rag.embeddings`：默认使用硅基流动 `BAAI/bge-m3`，通过 `AISB_SILICONFLOW_API_KEY` 和 `AISB_SILICONFLOW_BASE_URL` 调用 OpenAI-compatible embeddings 接口；也可切换 `openai/local` provider，向量维度按模型确定
 - `app.rag.vector_store`：Qdrant collection 初始化、upsert、search、按文件删除；payload 必须包含 `user_id/file_id/chunk_id/folder_id/page_number/chunk_index/locator`
 - `app.rag.retriever`：global/file/folder scope 解析与用户隔离
 - `app.rag.generator`：严格基于上下文生成，要求每个事实句或要点包含引用标记
-- `app.rag.pipeline`：retrieve -> generate -> citation validate/repair -> degrade 编排
+- `app.agent.workflow`：LangGraph 问答编排层，负责 load_context -> retrieve -> generate -> validate/repair/degrade -> emit
+- `app.rag.pipeline`：兼容旧导入的轻量外壳，委托 `app.agent.workflow.QAAgentWorkflow`
 
 ## 8. API 与 SSE 协议
 

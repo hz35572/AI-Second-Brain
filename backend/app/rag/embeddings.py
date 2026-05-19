@@ -8,6 +8,7 @@ from app.core.config import Settings, get_settings
 
 
 EMBEDDING_DIMENSIONS: dict[str, int] = {
+    "BAAI/bge-m3": 1024,
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
 }
@@ -29,16 +30,42 @@ class EmbeddingClient:
         cleaned = [text or "" for text in texts]
         if not cleaned:
             return []
+        if self.settings.EMBEDDING_PROVIDER == "local":
+            return [self._local_embedding(text) for text in cleaned]
+        if self.settings.EMBEDDING_PROVIDER == "siliconflow":
+            if not self.settings.SILICONFLOW_API_KEY:
+                return [self._local_embedding(text) for text in cleaned]
+            return await self._remote_embeddings(
+                api_key=self.settings.SILICONFLOW_API_KEY,
+                base_url=self.settings.SILICONFLOW_BASE_URL,
+                texts=cleaned,
+            )
         if not self.settings.OPENAI_API_KEY:
             return [self._local_embedding(text) for text in cleaned]
+        return await self._remote_embeddings(
+            api_key=self.settings.OPENAI_API_KEY,
+            base_url=None,
+            texts=cleaned,
+        )
+
+    async def _remote_embeddings(
+        self,
+        *,
+        api_key: str,
+        base_url: str | None,
+        texts: Sequence[str],
+    ) -> list[list[float]]:
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
 
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:  # pragma: no cover - depends on optional runtime package
-            raise RuntimeError("openai package is required when AISB_OPENAI_API_KEY is configured") from exc
+            raise RuntimeError("openai package is required for remote embeddings") from exc
 
-        client = AsyncOpenAI(api_key=self.settings.OPENAI_API_KEY)
-        response = await client.embeddings.create(model=self.model, input=list(cleaned))
+        client = AsyncOpenAI(**client_kwargs)
+        response = await client.embeddings.create(model=self.model, input=list(texts))
         by_index = sorted(response.data, key=lambda item: item.index)
         return [list(item.embedding) for item in by_index]
 

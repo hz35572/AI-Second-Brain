@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   FolderOpen,
   Settings,
@@ -9,6 +9,9 @@ import {
   BrainCircuit,
   LogOut,
   LogIn,
+  MessageSquare,
+  Menu,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,59 +24,65 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
-
-const mockConversations = [
-  { id: "c1", title: "关于第三季度预算的讨论", updated_at: "2026-04-26" },
-  { id: "c2", title: "研究论文摘要总结", updated_at: "2026-04-25" },
-];
+import { useChatStore } from "@/store/chat";
+import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getConversations } from "@/lib/api/chat";
 
 export function LeftNav() {
   const router = useRouter();
+  const pathname = usePathname();
   const { leftNavCollapsed, toggleLeftNav } = useUIStore();
   const { user, isAuthenticated, logout } = useAuthStore();
+  const { conversations, setConversations, setCurrentConversationId } = useChatStore();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  if (leftNavCollapsed) {
-    return (
-      <div className="w-14 border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col items-center py-4 gap-3">
-        <Button variant="ghost" size="icon" onClick={toggleLeftNav}>
-          <BrainCircuit className="h-5 w-5 text-[#4F46E5]" />
-        </Button>
-        {isAuthenticated ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push("/files")}
-          >
-            <FolderOpen className="h-5 w-5" />
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push("/login")}
-          >
-            <LogIn className="h-5 w-5" />
-          </Button>
-        )}
-      </div>
-    );
-  }
+  useQuery({
+    queryKey: ["conversations"],
+    queryFn: async () => {
+      const data = await getConversations({ page: 1, page_size: 50 });
+      setConversations(data.items);
+      return data;
+    },
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
 
-  return (
-    <aside className="w-[260px] border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col">
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const handleNewChat = () => {
+    setCurrentConversationId(null);
+    router.push("/chat");
+  };
+
+  const NavContent = () => (
+    <>
       <div className="p-4">
         <div className="flex items-center gap-2 mb-4">
           <BrainCircuit className="h-6 w-6 text-[#4F46E5]" />
-          <h1 className="text-lg font-semibold text-[#111827]">
-            AI Second Brain
-          </h1>
+          {!leftNavCollapsed && (
+            <h1 className="text-lg font-semibold text-[#111827] truncate">
+              AI Second Brain
+            </h1>
+          )}
           <Button
             variant="ghost"
             size="icon"
-            className="ml-auto h-7 w-7"
+            className="ml-auto h-7 w-7 hidden lg:flex"
             onClick={toggleLeftNav}
           >
-            <ChevronDown className="h-4 w-4 rotate-90" />
+            <ChevronDown className={cn("h-4 w-4 transition-transform", leftNavCollapsed ? "-rotate-90" : "rotate-90")} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto h-7 w-7 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          >
+            <X className="h-4 w-4" />
           </Button>
         </div>
 
@@ -81,19 +90,22 @@ export function LeftNav() {
           <>
             <Button
               className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
-              onClick={() => router.push("/chat")}
+              onClick={handleNewChat}
             >
               <Plus className="h-4 w-4 mr-2" />
-              新建对话
+              {!leftNavCollapsed && "新建对话"}
             </Button>
 
             <Button
               variant="ghost"
-              className="w-full justify-start gap-2 mt-2 text-[#111827] hover:bg-[#EEF2FF]"
+              className={cn(
+                "w-full justify-start gap-2 mt-2 text-[#111827] hover:bg-[#EEF2FF]",
+                pathname === "/files" && "bg-[#EEF2FF] text-[#4F46E5]"
+              )}
               onClick={() => router.push("/files")}
             >
               <FolderOpen className="h-4 w-4" />
-              知识库
+              {!leftNavCollapsed && "知识库"}
             </Button>
           </>
         ) : (
@@ -102,7 +114,7 @@ export function LeftNav() {
             onClick={() => router.push("/login")}
           >
             <LogIn className="h-4 w-4 mr-2" />
-            登录
+            {!leftNavCollapsed && "登录"}
           </Button>
         )}
       </div>
@@ -113,20 +125,35 @@ export function LeftNav() {
         <ScrollArea className="flex-1 px-3 py-3">
           <div className="space-y-4">
             <div>
-              <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2 px-2">
-                近期对话
-              </h3>
+              {!leftNavCollapsed && (
+                <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2 px-2">
+                  近期对话
+                </h3>
+              )}
               <div className="space-y-0.5">
-                {mockConversations.map((conv) => (
+                {conversations.slice(0, 20).map((conv) => (
                   <button
                     key={conv.id}
-                    onClick={() => router.push(`/chat?conversation=${conv.id}`)}
-                    className="flex flex-col w-full rounded-md px-2 py-1.5 text-sm text-[#111827] hover:bg-[#EEF2FF] transition-colors text-left"
+                    onClick={() => {
+                      setCurrentConversationId(conv.id);
+                      router.push(`/chat?conversation=${conv.id}`);
+                    }}
+                    className={cn(
+                      "flex items-center w-full rounded-md px-2 py-1.5 text-sm transition-colors text-left",
+                      pathname === `/chat` && conv.id === new URLSearchParams(window.location.search).get("conversation")
+                        ? "bg-[#EEF2FF] text-[#4F46E5]"
+                        : "text-[#111827] hover:bg-[#EEF2FF]"
+                    )}
                   >
-                    <span className="truncate">{conv.title}</span>
-                    <span className="text-xs text-[#6B7280]">{conv.updated_at}</span>
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0 mr-2" />
+                    {!leftNavCollapsed && (
+                      <span className="truncate">{conv.title}</span>
+                    )}
                   </button>
                 ))}
+                {conversations.length === 0 && !leftNavCollapsed && (
+                  <p className="text-xs text-[#6B7280] px-2 py-2">暂无对话</p>
+                )}
               </div>
             </div>
           </div>
@@ -138,14 +165,16 @@ export function LeftNav() {
       <div className="p-3">
         {isAuthenticated ? (
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" className="w-full justify-start gap-2">
-                <div className="h-7 w-7 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-medium">
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className={cn("w-full justify-start gap-2", leftNavCollapsed && "px-2")}>
+                <div className="h-7 w-7 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-medium shrink-0">
                   {user?.name?.charAt(0)?.toUpperCase() || "U"}
                 </div>
-                <span className="text-sm text-[#111827]">
-                  {user?.name || "用户"}
-                </span>
+                {!leftNavCollapsed && (
+                  <span className="text-sm text-[#111827] truncate">
+                    {user?.name || "用户"}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -166,10 +195,54 @@ export function LeftNav() {
             onClick={() => router.push("/login")}
           >
             <LogIn className="h-4 w-4" />
-            <span className="text-sm text-[#111827]">登录</span>
+            {!leftNavCollapsed && <span className="text-sm text-[#111827]">登录</span>}
           </Button>
         )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger */}
+      <div className="lg:hidden fixed top-3 left-3 z-50">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 bg-white shadow-sm border border-[#E5E7EB]"
+          onClick={() => setMobileOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/30 z-40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar */}
+      <aside
+        className={cn(
+          "lg:hidden fixed inset-y-0 left-0 z-50 w-[260px] border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col transition-transform duration-300",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <NavContent />
+      </aside>
+
+      {/* Desktop sidebar */}
+      <aside
+        className={cn(
+          "hidden lg:flex border-r border-[#E5E7EB] bg-[#F9FAFB] flex-col transition-all duration-300",
+          leftNavCollapsed ? "w-16" : "w-[260px]"
+        )}
+      >
+        <NavContent />
+      </aside>
+    </>
   );
 }

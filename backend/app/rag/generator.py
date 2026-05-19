@@ -35,12 +35,15 @@ class RAGGenerator:
         except ImportError as exc:  # pragma: no cover - depends on optional runtime package
             raise RuntimeError("openai package is required when AISB_OPENAI_API_KEY is configured") from exc
 
-        client = AsyncOpenAI(api_key=self.settings.OPENAI_API_KEY)
+        client_kwargs = {"api_key": self.settings.OPENAI_API_KEY}
+        if self.settings.OPENAI_BASE_URL:
+            client_kwargs["base_url"] = self.settings.OPENAI_BASE_URL
+        client = AsyncOpenAI(**client_kwargs)
         try:
-            response = await client.responses.create(
+            response = await client.chat.completions.create(
                 model=self.settings.AI_MODEL,
                 temperature=self.settings.AI_TEMPERATURE,
-                input=[
+                messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
@@ -51,10 +54,15 @@ class RAGGenerator:
                 "token_usage": 0,
                 "llm_fallback": True,
             }
-        answer = getattr(response, "output_text", "") or NOT_FOUND_ANSWER
+        answer = response.choices[0].message.content or NOT_FOUND_ANSWER
         usage = getattr(response, "usage", None)
         token_usage = int(getattr(usage, "total_tokens", 0) or 0)
-        return answer, {"model": self.settings.AI_MODEL, "token_usage": token_usage, "llm_fallback": False}
+        return answer, {
+            "model": self.settings.AI_MODEL,
+            "llm_provider": self.settings.LLM_PROVIDER,
+            "token_usage": token_usage,
+            "llm_fallback": False,
+        }
 
     def _build_prompt(self, *, question: str, chunks: Sequence[RetrievedChunk]) -> str:
         blocks = []

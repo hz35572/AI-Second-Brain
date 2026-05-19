@@ -36,7 +36,7 @@ function parseContentWithCitations(content: string, citations: Citation[] = []) 
 }
 
 export function AssistantMessage({ content, citations, streaming }: AssistantMessageProps) {
-  parseContentWithCitations(content, citations);
+  const { parts, citationMap } = parseContentWithCitations(content, citations);
 
   return (
     <div className={cn("flex gap-3", streaming && "opacity-90")}>
@@ -48,7 +48,27 @@ export function AssistantMessage({ content, citations, streaming }: AssistantMes
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+              p: ({ children }) => {
+                if (typeof children === "string") {
+                  const { parts: textParts } = parseContentWithCitations(children, citations);
+                  return (
+                    <p className="mb-3 leading-relaxed">
+                      {textParts.map((part, i) =>
+                        part.type === "citation" ? (
+                          <CitationBadge
+                            key={i}
+                            index={part.index}
+                            citation={citationMap.get(part.index)}
+                          />
+                        ) : (
+                          <span key={i}>{part.content}</span>
+                        )
+                      )}
+                    </p>
+                  );
+                }
+                return <p className="mb-3 leading-relaxed">{children}</p>;
+              },
               ul: ({ children }) => <ul className="mb-3 list-disc pl-5">{children}</ul>,
               ol: ({ children }) => <ol className="mb-3 list-decimal pl-5">{children}</ol>,
               li: ({ children }) => <li className="mb-1">{children}</li>,

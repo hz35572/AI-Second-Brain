@@ -1,5 +1,5 @@
-"""Retrieval-augmented generation primitives."""
+"""Retrieval-augmented generation primitives.
 
-from app.rag.pipeline import RAGPipeline
-
-__all__ = ["RAGPipeline"]
+Keep package imports lightweight to avoid circular imports between the
+agent workflow and RAG pipeline modules.
+"""

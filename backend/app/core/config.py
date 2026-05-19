@@ -171,6 +171,7 @@ class Settings(BaseSettings):
 
     # AI / RAG
     OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = ""
     AI_MODEL: str = "gpt-5-mini"
     AI_TEMPERATURE: float = 0.7
     AI_AVAILABLE_MODELS: list[str] = [
@@ -201,7 +202,10 @@ class Settings(BaseSettings):
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
     QDRANT_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_PROVIDER: Literal["siliconflow", "openai", "local"] = "siliconflow"
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    SILICONFLOW_API_KEY: str = ""
+    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
     RAG_CHUNK_SIZE: int = 512
     RAG_CHUNK_OVERLAP: int = 50
     RAG_DEFAULT_COLLECTION: str = "documents"
