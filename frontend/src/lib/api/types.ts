@@ -21,6 +21,7 @@ export interface FileItem {
   name: string;
   file_size: number;
   mime_type: string;
+  folder_id?: string | null;
   page_count?: number;
   summary?: string;
   tags?: string[];

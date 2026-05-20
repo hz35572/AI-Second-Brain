@@ -213,7 +213,8 @@ Response 202:
   "data": {
     "file_id": "uuid",
     "task_id": "uuid",
-    "status": "pending"
+    "status": "pending",
+    "folder_id": "uuid"
   }
 }
 ```
@@ -276,7 +277,8 @@ Response 202:
   "data": {
     "file_id": "uuid",
     "task_id": "uuid",
-    "status": "parsing"
+    "status": "parsing",
+    "folder_id": "uuid"
   }
 }
 ```
@@ -314,6 +316,12 @@ Response 200:
 ### 3.6 获取文件列表
 
 `GET /files?folder_id={uuid}&page=1&page_size=20&status=ready&tag=标签名`
+
+说明：
+
+- 不传 `folder_id`：返回当前用户全部文件。
+- `folder_id=root`：仅返回根目录文件（`folder_id IS NULL`），用于文件管理页根目录视图。
+- `folder_id={uuid}`：仅返回指定文件夹下的文件。
 
 Response 200:
 
@@ -457,6 +465,31 @@ Response 200:
 }
 ```
 
+### 4.3 删除文件夹
+
+`DELETE /folders/{folder_id}`
+
+删除指定文件夹及其所有子文件夹。为避免“原文删了但还能检索到”的不一致状态，该接口会同步删除这些文件夹下的文件、chunks、tasks、向量库记录与对象存储原文件。
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "deleted": true,
+    "folder_id": "uuid",
+    "deleted_folder_count": 2,
+    "deleted_file_count": 10
+  }
+}
+```
+
+错误：
+
+- `400 ERR_INVALID_ARGUMENT`：`folder_id` 不是合法 UUID。
+- `404 ERR_FOLDER_NOT_FOUND`：文件夹不存在或不属于当前用户。
+
 ## 5. 对话问答模块（核心）
 
 ### 5.1 创建对话
@@ -574,6 +607,56 @@ Response 200:
   }
 }
 ```
+
+### 5.5 重命名对话
+
+`PATCH /chat/conversations/{conversation_id}`
+
+Request:
+
+```json
+{
+  "title": "新的对话标题"
+}
+```
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "updated": true,
+    "conversation_id": "uuid",
+    "title": "新的对话标题"
+  }
+}
+```
+
+说明：
+
+- 若对话不存在或不属于当前用户，返回 `updated=false`（不暴露资源存在性）。
+
+### 5.6 删除对话
+
+`DELETE /chat/conversations/{conversation_id}`
+
+Response 200:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "deleted": true,
+    "conversation_id": "uuid"
+  }
+}
+```
+
+说明：
+
+- 删除会级联删除该对话下的 messages（数据库外键级联）。
+- 若对话不存在或不属于当前用户，返回 `deleted=false`（不暴露资源存在性）。
 
 ## 6. 标签与摘要模块（V1.5）
 

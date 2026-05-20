@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useAuthStore } from "@/store/auth";
+import { login as loginApi } from "@/lib/api/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,27 +38,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // TODO: 替换为实际 API 调用
-      // const response = await fetch("/api/auth/login", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email, password }),
-      // });
-      // const data = await response.json();
+      const { token, user } = await loginApi({ email, password });
 
-      // 模拟登录成功
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      login({
-        id: "1",
-        email,
-        name: email.split("@")[0],
-        provider: "local",
-      });
+      login(user);
+      localStorage.setItem("aisb_token", token);
 
       router.push("/chat");
-    } catch {
-      setError("登录失败，请检查邮箱和密码");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "登录失败，请检查邮箱和密码");
     } finally {
       setLoading(false);
     }

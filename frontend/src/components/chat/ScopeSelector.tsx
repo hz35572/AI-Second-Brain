@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
-import { Globe, FolderOpen, FileText, Check, X } from "lucide-react";
+import { Globe, FolderOpen, FileText, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getFiles, getFolderTree } from "@/lib/api/files";
+import { getFolderTree } from "@/lib/api/files";
 import { useFilesStore } from "@/store/files";
 import {
   Dialog,
@@ -31,12 +31,17 @@ export function ScopeSelector() {
     scope.type === "global" ? [] : (scope as { ids: string[] }).ids
   );
 
-  const { files } = useFilesStore();
+  const { files, setFolders } = useFilesStore();
   const { data: folderData } = useQuery({
     queryKey: ["folders"],
     queryFn: () => getFolderTree(),
     staleTime: 60 * 1000,
   });
+
+  useEffect(() => {
+    if (!folderData) return;
+    queueMicrotask(() => setFolders(folderData));
+  }, [folderData, setFolders]);
 
   const currentType = scope.type;
 

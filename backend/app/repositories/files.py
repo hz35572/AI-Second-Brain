@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from sqlalchemy import delete, func, select
@@ -46,13 +48,17 @@ class FileRepository:
         *,
         user_id: uuid.UUID,
         folder_id: uuid.UUID | None,
+        root_only: bool = False,
         status: str | None,
         page: int,
         page_size: int,
     ) -> tuple[int, list[File]]:
         stmt = select(File).where(File.user_id == user_id)
         count_stmt = select(func.count(File.id)).where(File.user_id == user_id)
-        if folder_id is not None:
+        if root_only:
+            stmt = stmt.where(File.folder_id.is_(None))
+            count_stmt = count_stmt.where(File.folder_id.is_(None))
+        elif folder_id is not None:
             stmt = stmt.where(File.folder_id == folder_id)
             count_stmt = count_stmt.where(File.folder_id == folder_id)
         if status is not None:
@@ -63,6 +69,13 @@ class FileRepository:
         stmt = stmt.order_by(File.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
         items = list((await self.db.execute(stmt)).scalars().all())
         return total, items
+
+    async def list_by_folder_ids(self, *, user_id: uuid.UUID, folder_ids: list[uuid.UUID]) -> list[File]:
+        if not folder_ids:
+            return []
+
+        res = await self.db.execute(select(File).where(File.user_id == user_id, File.folder_id.in_(folder_ids)))
+        return list(res.scalars().all())
 
     async def update_status(self, file_id: uuid.UUID, status: str, *, error_message: str | None = None) -> None:
         f = await self.get(file_id)

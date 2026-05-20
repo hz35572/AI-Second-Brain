@@ -14,6 +14,9 @@ class ConversationRepository:
     async def get(self, conversation_id: uuid.UUID) -> Conversation | None:
         return await self.db.get(Conversation, conversation_id)
 
+    async def delete(self, conv: Conversation) -> None:
+        await self.db.delete(conv)
+
     async def create(
         self, *, user_id: uuid.UUID, title: str | None, scope_type: str, scope_ids: list[uuid.UUID] | None
     ) -> Conversation:

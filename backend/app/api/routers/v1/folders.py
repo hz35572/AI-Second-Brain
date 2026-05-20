@@ -25,3 +25,14 @@ async def create_folder(
 async def get_folder_tree(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     data = await FolderService(db).folder_tree(user_id=current_user.id)
     return ok(data)
+
+
+@router.delete("/{folder_id}")
+async def delete_folder(
+    folder_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    folder_uuid = parse_uuid(folder_id, field="folder_id")
+    data = await FolderService(db).delete_folder(user_id=current_user.id, folder_id=folder_uuid)
+    return ok(data)

@@ -221,6 +221,7 @@
 - `users` 删除时级联删除其 `folders/files/file_chunks/tags/conversations/tasks`。
 - `email_verification_codes` 注册前可能没有对应 `users` 记录，不设置用户外键；用户删除不影响历史发码记录。
 - `folders.parent_id` 级联删除子目录。
+- 通过 `DELETE /folders/{folder_id}` 删除文件夹时，应用层必须删除该文件夹及子文件夹下的 `files/file_chunks/tasks`，并同步清理 Qdrant 向量记录、对象存储原文件和相关缓存；不允许出现原文删除后仍可检索到的状态。
 - `files` 删除时数据库侧级联删除 `file_chunks`，并要求应用层同步清理：
   - Qdrant 中对应向量记录
   - 对象存储原文件

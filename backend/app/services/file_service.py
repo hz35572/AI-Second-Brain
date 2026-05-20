@@ -9,6 +9,7 @@ from app.core.database import AsyncSessionLocal
 from app.rag.vector_store import QdrantVectorStore
 from app.repositories.chunks import FileChunkRepository
 from app.repositories.files import FileRepository
+from app.repositories.folders import FolderRepository
 from app.repositories.tasks import TaskRepository
 from app.services.ingestion_service import IngestionService
 from app.services.storage_service import StorageService
@@ -26,11 +27,24 @@ class FileService:
         self.db = db
         self.storage = StorageService()
         self.files = FileRepository(db)
+        self.folders = FolderRepository(db)
         self.chunks = FileChunkRepository(db)
         self.tasks = TaskRepository(db)
         self.vector_store = QdrantVectorStore()
 
+    async def _ensure_folder_access(self, *, user_id: uuid.UUID, folder_id: uuid.UUID | None) -> None:
+        if folder_id is None:
+            return
+
+        folder = await self.folders.get(folder_id)
+        if not folder or folder.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "ERR_FOLDER_NOT_FOUND", "message": "文件夹不存在", "details": {}},
+            )
+
     async def upload_direct(self, *, user_id: uuid.UUID, upload: UploadFile, folder_id: uuid.UUID | None) -> dict:
+        await self._ensure_folder_access(user_id=user_id, folder_id=folder_id)
         body = await upload.read()
         storage_meta = self.storage.save_direct_upload(user_id=user_id, filename=upload.filename or "upload.bin", body=body)
 
@@ -49,7 +63,12 @@ class FileService:
         await self.db.commit()
 
         run_background(_run_ingest_background(user_id=user_id, file_id=f.id, task_id=task.id))
-        return {"file_id": str(f.id), "task_id": str(task.id), "status": task.status}
+        return {
+            "file_id": str(f.id),
+            "task_id": str(task.id),
+            "status": task.status,
+            "folder_id": str(f.folder_id) if f.folder_id else None,
+        }
 
     async def init_multipart(
         self,
@@ -60,6 +79,7 @@ class FileService:
         mime_type: str | None,
         folder_id: uuid.UUID | None,
     ) -> dict:
+        await self._ensure_folder_access(user_id=user_id, folder_id=folder_id)
         return self.storage.init_multipart(
             user_id=user_id,
             file_name=file_name,
@@ -92,7 +112,12 @@ class FileService:
         await self.db.commit()
 
         run_background(_run_ingest_background(user_id=user_id, file_id=f.id, task_id=task.id))
-        return {"file_id": str(f.id), "task_id": str(task.id), "status": "parsing"}
+        return {
+            "file_id": str(f.id),
+            "task_id": str(task.id),
+            "status": "parsing",
+            "folder_id": str(f.folder_id) if f.folder_id else None,
+        }
 
     async def delete_file(self, *, user_id: uuid.UUID, file_id: uuid.UUID) -> dict:
         f = await self.files.get(file_id)

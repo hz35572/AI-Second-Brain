@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getFileChunks } from "@/lib/api/files";
 import ReactMarkdown from "react-markdown";
@@ -71,9 +71,11 @@ function MarkdownPreview({ target }: { target: { kind: "markdown"; fileId: strin
         </div>
       ) : content ? (
         <div className="border border-[#E5E7EB] rounded-lg p-4 bg-[#F9FAFB]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {content}
-          </ReactMarkdown>
+            </ReactMarkdown>
+          </div>
           {target.anchorText && (
             <div className="mt-4 p-3 rounded bg-[#FEF08A] text-[#111827] text-sm">
               [高亮] {target.anchorText}
@@ -114,14 +116,13 @@ function ExcelPreview({ target }: { target: { kind: "excel"; fileId: string; she
 
 export function RightDrawer() {
   const { drawerOpen, previewTarget, closeDrawer } = useUIStore();
+  const targetKey = useMemo(() => {
+    if (!drawerOpen || !previewTarget) return "closed";
+    return `${previewTarget.kind}:${previewTarget.fileId}`;
+  }, [drawerOpen, previewTarget]);
+
   const [matchIndex, setMatchIndex] = useState(1);
   const totalMatches = 3;
-
-  useEffect(() => {
-    if (drawerOpen) {
-      setMatchIndex(1);
-    }
-  }, [drawerOpen, previewTarget]);
 
   return (
     <aside
@@ -166,7 +167,7 @@ export function RightDrawer() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea key={targetKey} className="flex-1 p-4">
         {previewTarget ? (
           <div className="space-y-4">
             {previewTarget.kind === "pdf" && <PdfPreview target={previewTarget} />}

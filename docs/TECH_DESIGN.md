@@ -243,6 +243,10 @@ RAG 模块边界：
 - `app.agent.workflow`：LangGraph 问答编排层，负责 load_context -> retrieve -> generate -> validate/repair/degrade -> emit
 - `app.rag.pipeline`：兼容旧导入的轻量外壳，委托 `app.agent.workflow.QAAgentWorkflow`
 
+删除一致性：
+
+- `DELETE /folders/{folder_id}` 删除目标文件夹及其子文件夹，并由应用层同步删除范围内文件、chunks、tasks、Qdrant 向量记录和对象存储原文件，避免文件夹删除后仍可从向量库检索到原文内容。
+
 ## 8. API 与 SSE 协议
 
 `docs/API.md` 是接口与载荷的单一事实来源。  

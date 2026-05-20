@@ -1,15 +1,46 @@
 import { apiFetch } from "./client";
 import type { ApiResponse, FileItem, Folder, TaskProgress } from "./types";
 
+type FolderTreeNode = {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  path?: string;
+  children?: FolderTreeNode[];
+  file_count?: number;
+};
+
+function flattenFolderTree(nodes: FolderTreeNode[], parentId: string | null = null, parentPath = ""): Folder[] {
+  return nodes.flatMap((node) => {
+    if (node.id === "root") {
+      return flattenFolderTree(node.children || [], null, "");
+    }
+
+    const path = node.path || `${parentPath}/${node.name}`;
+    const folder: Folder = {
+      id: node.id,
+      name: node.name,
+      parent_id: node.parent_id ?? parentId,
+      path,
+      children: node.children as Folder[] | undefined,
+      file_count: node.file_count,
+    };
+
+    return [folder, ...flattenFolderTree(node.children || [], node.id, path)];
+  });
+}
+
 export async function getFiles(params?: {
-  folder_id?: string;
+  folder_id?: string | null;
+  root_only?: boolean;
   page?: number;
   page_size?: number;
   status?: string;
   tag?: string;
 }): Promise<{ total: number; items: FileItem[] }> {
   const search = new URLSearchParams();
-  if (params?.folder_id) search.set("folder_id", params.folder_id);
+  if (params?.root_only) search.set("folder_id", "root");
+  else if (params?.folder_id) search.set("folder_id", params.folder_id);
   if (params?.page) search.set("page", String(params.page));
   if (params?.page_size) search.set("page_size", String(params.page_size));
   if (params?.status) search.set("status", params.status);
@@ -20,7 +51,12 @@ export async function getFiles(params?: {
   return res.data;
 }
 
-export async function uploadFile(file: File, folderId?: string): Promise<{ file_id: string; task_id: string; status: string }> {
+export async function uploadFile(file: File, folderId?: string): Promise<{
+  file_id: string;
+  task_id: string;
+  status: string;
+  folder_id?: string | null;
+}> {
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
@@ -84,8 +120,18 @@ export async function uploadChunk(
   return data.data;
 }
 
-export async function completeChunkUpload(uploadId: string): Promise<{ file_id: string; task_id: string; status: string }> {
-  const res = await apiFetch<ApiResponse<{ file_id: string; task_id: string; status: string }>>(
+export async function completeChunkUpload(uploadId: string): Promise<{
+  file_id: string;
+  task_id: string;
+  status: string;
+  folder_id?: string | null;
+}> {
+  const res = await apiFetch<ApiResponse<{
+    file_id: string;
+    task_id: string;
+    status: string;
+    folder_id?: string | null;
+  }>>(
     `/files/upload/${uploadId}/complete`,
     { method: "POST" }
   );
@@ -143,14 +189,21 @@ export async function getTaskProgress(taskId: string): Promise<TaskProgress> {
 }
 
 export async function getFolderTree(): Promise<Folder[]> {
-  const res = await apiFetch<ApiResponse<Folder[]>>("/folders/tree");
-  return res.data;
+  const res = await apiFetch<ApiResponse<FolderTreeNode[]>>("/folders/tree");
+  return flattenFolderTree(res.data);
 }
 
 export async function createFolder(payload: { name: string; parent_id?: string }): Promise<Folder> {
   const res = await apiFetch<ApiResponse<Folder>>("/folders", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function deleteFolder(folderId: string): Promise<{ deleted: boolean; folder_id: string }> {
+  const res = await apiFetch<ApiResponse<{ deleted: boolean; folder_id: string }>>(`/folders/${folderId}`, {
+    method: "DELETE",
   });
   return res.data;
 }

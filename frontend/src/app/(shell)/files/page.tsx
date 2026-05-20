@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFilesStore } from "@/store/files";
 import { useAuthStore } from "@/store/auth";
@@ -16,7 +16,6 @@ import {
   createFolder,
   deleteFolder,
   getTaskProgress,
-  getFileChunks,
 } from "@/lib/api/files";
 import {
   FolderOpen,
@@ -35,7 +34,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
@@ -45,19 +43,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import type { FileItem, FolderItem } from "@/lib/api/types";
+import type { FileItem, Folder } from "@/lib/api/types";
 
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
@@ -81,7 +73,7 @@ function formatFileSize(bytes: number) {
 
 export default function FilesPage() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const {
     files,
     folders,
@@ -105,33 +97,40 @@ export default function FilesPage() {
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "file" | "folder"; id: string; name: string } | null>(null);
 
   useQuery({
     queryKey: ["files", selectedFolderId],
     queryFn: async () => {
       const data = await getFiles({
-        folder_id: selectedFolderId || undefined,
+        folder_id: selectedFolderId,
+        root_only: selectedFolderId === null,
         page: 1,
         page_size: 100,
       });
       setFiles(data.items);
       return data;
     },
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 30 * 1000,
   });
 
-  useQuery({
+  const { data: foldersData } = useQuery({
     queryKey: ["folders"],
     queryFn: async () => {
       const data = await getFolderTree();
       setFolders(data);
       return data;
     },
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 30 * 1000,
   });
+
+  useEffect(() => {
+    if (!foldersData) return;
+    queueMicrotask(() => setFolders(foldersData));
+  }, [foldersData, setFolders]);
 
   const pollTaskProgress = useCallback(
     (taskId: string, fileId: string) => {
@@ -139,12 +138,12 @@ export default function FilesPage() {
         try {
           const progress = await getTaskProgress(taskId);
           setUploadProgress(fileId, progress.progress || 50 + (progress.progress || 0) / 2);
-          if (progress.status === "completed" || progress.status === "done") {
+          if (progress.status === "completed") {
             updateFileStatus(fileId, "ready");
             clearInterval(interval);
             queryClient.invalidateQueries({ queryKey: ["files", selectedFolderId] });
-          } else if (progress.status === "failed" || progress.status === "error") {
-            updateFileStatus(fileId, "error");
+          } else if (progress.status === "failed") {
+            updateFileStatus(fileId, "failed");
             clearInterval(interval);
           }
         } catch {
@@ -155,66 +154,85 @@ export default function FilesPage() {
     [selectedFolderId, setUploadProgress, updateFileStatus, queryClient]
   );
 
-  const handleUploadFile = useCallback(
+  const uploadSingleFile = useCallback(
     async (file: File) => {
-      setUploadErrors([]);
-      setIsUploading(true);
-      try {
-        if (file.size > CHUNK_SIZE) {
-          const initRes = await initChunkUpload({
-            file_name: file.name,
-            file_size: file.size,
-            mime_type: file.type || "application/octet-stream",
-            folder_id: selectedFolderId || undefined,
-          });
+      if (file.size > CHUNK_SIZE) {
+        const initRes = await initChunkUpload({
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type || "application/octet-stream",
+          folder_id: selectedFolderId || undefined,
+        });
 
-          const totalChunks = Math.ceil(file.size / initRes.chunk_size);
-          for (let i = 0; i < totalChunks; i++) {
-            const start = i * initRes.chunk_size;
-            const end = Math.min(start + initRes.chunk_size, file.size);
-            const chunk = file.slice(start, end);
-            await uploadChunk(initRes.upload_id, i, chunk);
-            setUploadProgress(
-              `upload-${file.name}`,
-              Math.round(((i + 1) / totalChunks) * 50)
-            );
-          }
-
-          const completeRes = await completeChunkUpload(initRes.upload_id);
-          const tempFile: FileItem = {
-            id: completeRes.file_id,
-            name: file.name,
-            file_size: file.size,
-            mime_type: file.type || "application/octet-stream",
-            status: "parsing",
-            created_at: new Date().toISOString(),
-          };
-          addFile(tempFile);
-          pollTaskProgress(completeRes.task_id, completeRes.file_id);
-        } else {
-          const res = await uploadFile(file, selectedFolderId || undefined);
-          const tempFile: FileItem = {
-            id: res.file_id,
-            name: file.name,
-            file_size: file.size,
-            mime_type: file.type || "application/octet-stream",
-            status: "parsing",
-            created_at: new Date().toISOString(),
-          };
-          addFile(tempFile);
-          pollTaskProgress(res.task_id, res.file_id);
+        const totalChunks = Math.ceil(file.size / initRes.chunk_size);
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * initRes.chunk_size;
+          const end = Math.min(start + initRes.chunk_size, file.size);
+          const chunk = file.slice(start, end);
+          await uploadChunk(initRes.upload_id, i, chunk);
+          setUploadProgress(
+            `upload-${file.name}`,
+            Math.round(((i + 1) / totalChunks) * 50)
+          );
         }
-        setUploadOpen(false);
-      } catch (err) {
-        setUploadErrors((prev) => [
-          ...prev,
-          `${file.name}: ${err instanceof Error ? err.message : "上传失败"}`,
-        ]);
-      } finally {
-        setIsUploading(false);
+
+        const completeRes = await completeChunkUpload(initRes.upload_id);
+        const tempFile: FileItem = {
+          id: completeRes.file_id,
+          name: file.name,
+          file_size: file.size,
+          mime_type: file.type || "application/octet-stream",
+          folder_id: completeRes.folder_id ?? selectedFolderId ?? null,
+          status: "parsing",
+          created_at: new Date().toISOString(),
+        };
+        addFile(tempFile);
+        pollTaskProgress(completeRes.task_id, completeRes.file_id);
+      } else {
+        const res = await uploadFile(file, selectedFolderId || undefined);
+        const tempFile: FileItem = {
+          id: res.file_id,
+          name: file.name,
+          file_size: file.size,
+          mime_type: file.type || "application/octet-stream",
+          folder_id: res.folder_id ?? selectedFolderId ?? null,
+          status: "parsing",
+          created_at: new Date().toISOString(),
+        };
+        addFile(tempFile);
+        pollTaskProgress(res.task_id, res.file_id);
       }
     },
-    [selectedFolderId, addFile, pollTaskProgress, setIsUploading, setUploadProgress]
+    [selectedFolderId, addFile, pollTaskProgress, setUploadProgress]
+  );
+
+  const handleUploadFiles = useCallback(
+    async (fileList: FileList | File[]) => {
+      const filesToUpload = Array.from(fileList).filter((file) => file.size > 0);
+      if (filesToUpload.length === 0) return;
+
+      setUploadErrors([]);
+      setIsUploading(true);
+      let hasError = false;
+
+      for (const file of filesToUpload) {
+        try {
+          await uploadSingleFile(file);
+        } catch (err) {
+          hasError = true;
+          setUploadErrors((prev) => [
+            ...prev,
+            `${file.name}: ${err instanceof Error ? err.message : "上传失败"}`,
+          ]);
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["files", selectedFolderId] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      setIsUploading(false);
+      if (!hasError) setUploadOpen(false);
+    },
+    [selectedFolderId, queryClient, setIsUploading, uploadSingleFile]
   );
 
   const handleCreateFolder = useCallback(async () => {
@@ -257,9 +275,7 @@ export default function FilesPage() {
       try {
         await deleteFolder(folderId);
         removeFolder(folderId);
-        if (selectedFolderId === folderId) {
-          setSelectedFolderId(null);
-        }
+        if (selectedFolderId === folderId) setSelectedFolderId(null);
         queryClient.invalidateQueries({ queryKey: ["folders"] });
         queryClient.invalidateQueries({ queryKey: ["files", selectedFolderId] });
       } catch (err) {
@@ -273,10 +289,19 @@ export default function FilesPage() {
   );
 
   const filteredFiles = selectedFolderId
-    ? files.filter((f) => f.folder_id === selectedFolderId || !f.folder_id)
+    ? files.filter((f) => f.folder_id === selectedFolderId)
     : files;
 
-  const currentFolder = folders.find((f) => f.id === selectedFolderId);
+  const visibleFolders = foldersData ?? folders;
+  const currentFolder = visibleFolders.find((f) => f.id === selectedFolderId);
+  const childFolders: Folder[] = visibleFolders
+    .filter((f) => (selectedFolderId ? f.parent_id === selectedFolderId : f.parent_id === null))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // If current folder disappears (deleted elsewhere), fall back to root.
+  useEffect(() => {
+    if (selectedFolderId && !currentFolder) setSelectedFolderId(null);
+  }, [selectedFolderId, currentFolder, setSelectedFolderId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -332,11 +357,11 @@ export default function FilesPage() {
           </Button>
 
           <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1">
-                <Plus className="h-3.5 w-3.5" />
-                新建文件夹
-              </Button>
+            <DialogTrigger
+              render={<Button variant="outline" size="sm" className="gap-1" />}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新建文件夹
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
@@ -375,34 +400,77 @@ export default function FilesPage() {
           </Dialog>
 
           <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                className="bg-[#4F46E5] hover:bg-[#4338CA] text-white gap-1"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                上传文件
-              </Button>
+            <DialogTrigger
+              render={
+                <Button
+                  size="sm"
+                  className="bg-[#4F46E5] hover:bg-[#4338CA] text-white gap-1"
+                />
+              }
+            >
+              <Upload className="h-3.5 w-3.5" />
+              上传文件
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>上传文件</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-2">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#E5E7EB] rounded-lg cursor-pointer hover:border-[#4F46E5] hover:bg-[#EEF2FF] transition-colors">
-                  <Upload className="h-8 w-8 text-[#6B7280] mb-2" />
+                <label
+                  className={cn(
+                    "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                    isDragActive
+                      ? "border-[#4F46E5] bg-[#EEF2FF]"
+                      : "border-[#E5E7EB] hover:border-[#4F46E5] hover:bg-[#EEF2FF]",
+                    isUploading && "cursor-wait opacity-75"
+                  )}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragActive(true);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "copy";
+                    setIsDragActive(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      setIsDragActive(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragActive(false);
+                    if (isUploading) return;
+                    handleUploadFiles(e.dataTransfer.files);
+                  }}
+                >
+                  <Upload
+                    className={cn(
+                      "h-8 w-8 mb-2",
+                      isDragActive ? "text-[#4F46E5]" : "text-[#6B7280]"
+                    )}
+                  />
                   <span className="text-sm text-[#6B7280]">
-                    点击或拖拽文件到此处
+                    {isDragActive ? "松开即可上传" : "点击或拖拽文件到此处"}
                   </span>
                   <span className="text-xs text-[#9CA3AF] mt-1">
                     支持 TXT, PDF, Word, Excel 等格式
                   </span>
                   <input
                     type="file"
+                    multiple
                     className="hidden"
+                    disabled={isUploading}
                     onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleUploadFile(file);
+                      const selectedFiles = e.target.files;
+                      if (selectedFiles?.length) handleUploadFiles(selectedFiles);
+                      e.currentTarget.value = "";
                     }}
                   />
                 </label>
@@ -450,74 +518,42 @@ export default function FilesPage() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-[220px] border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col shrink-0">
-          <div className="p-3">
-            <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2">
-              文件夹
-            </h3>
-            <div className="space-y-0.5">
-              <button
-                onClick={() => setSelectedFolderId(null)}
-                className={cn(
-                  "flex items-center w-full rounded-md px-2 py-1.5 text-sm transition-colors text-left",
-                  selectedFolderId === null
-                    ? "bg-[#EEF2FF] text-[#4F46E5]"
-                    : "text-[#111827] hover:bg-[#EEF2FF]"
-                )}
-              >
-                <FolderOpen className="h-4 w-4 mr-2" />
-                全部文件
-              </button>
-              {folders.map((folder) => (
-                <button
-                  key={folder.id}
-                  onClick={() => setSelectedFolderId(folder.id)}
-                  className={cn(
-                    "flex items-center w-full rounded-md px-2 py-1.5 text-sm transition-colors text-left group",
-                    selectedFolderId === folder.id
-                      ? "bg-[#EEF2FF] text-[#4F46E5]"
-                      : "text-[#111827] hover:bg-[#EEF2FF]"
-                  )}
-                >
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  <span className="truncate flex-1">{folder.name}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Trash2 className="h-3 w-3 text-[#EF4444]" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        className="text-[#EF4444]"
-                        onClick={() =>
-                          setDeleteConfirm({
-                            type: "folder",
-                            id: folder.id,
-                            name: folder.name,
-                          })
-                        }
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        删除文件夹
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full p-4">
             {viewMode === "grid" ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {childFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className="group relative p-3 rounded-lg border border-[#E5E7EB] hover:border-[#4F46E5] hover:shadow-sm transition-all bg-white cursor-pointer"
+                    onClick={() => setSelectedFolderId(folder.id)}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className="h-12 w-12 rounded-lg bg-[#EEF2FF] flex items-center justify-center mb-2">
+                        <FolderOpen className="h-5 w-5 text-[#4F46E5]" />
+                      </div>
+                      <span className="text-xs text-[#111827] truncate w-full">
+                        {folder.name}
+                      </span>
+                      <span className="text-[10px] text-[#6B7280] mt-0.5">
+                        文件夹
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm({
+                          type: "folder",
+                          id: folder.id,
+                          name: folder.name,
+                        });
+                      }}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#FEF2F2] transition-opacity"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-[#EF4444]" />
+                    </button>
+                  </div>
+                ))}
                 {filteredFiles.map((file) => (
                   <div
                     key={file.id}
@@ -539,7 +575,7 @@ export default function FilesPage() {
                           处理中
                         </div>
                       )}
-                      {file.status === "error" && (
+                      {file.status === "failed" && (
                         <span className="mt-2 text-[10px] text-[#EF4444]">
                           处理失败
                         </span>
@@ -559,16 +595,43 @@ export default function FilesPage() {
                     </button>
                   </div>
                 ))}
-                {filteredFiles.length === 0 && (
+                {childFolders.length === 0 && filteredFiles.length === 0 && (
                   <div className="col-span-full text-center py-12 text-[#6B7280]">
-                    <FileText className="h-12 w-12 mx-auto mb-3 text-[#E5E7EB]" />
-                    <p className="text-sm">暂无文件</p>
-                    <p className="text-xs mt-1">点击右上角上传文件</p>
+                    <FolderOpen className="h-12 w-12 mx-auto mb-3 text-[#E5E7EB]" />
+                    <p className="text-sm">暂无内容</p>
                   </div>
                 )}
               </div>
             ) : (
               <div className="space-y-1">
+                {childFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    onClick={() => setSelectedFolderId(folder.id)}
+                    className="group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-[#F9FAFB] transition-colors cursor-pointer"
+                  >
+                    <FolderOpen className="h-5 w-5 text-[#4F46E5]" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#111827] truncate">
+                        {folder.name}
+                      </p>
+                      <p className="text-xs text-[#6B7280]">文件夹</p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm({
+                          type: "folder",
+                          id: folder.id,
+                          name: folder.name,
+                        });
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-[#FEF2F2] transition-opacity"
+                    >
+                      <Trash2 className="h-4 w-4 text-[#EF4444]" />
+                    </button>
+                  </div>
+                ))}
                 {filteredFiles.map((file) => (
                   <div
                     key={file.id}
@@ -582,7 +645,7 @@ export default function FilesPage() {
                         {file.status === "parsing" && (
                           <span className="ml-2 text-[#F59E0B]">处理中</span>
                         )}
-                        {file.status === "error" && (
+                        {file.status === "failed" && (
                           <span className="ml-2 text-[#EF4444]">处理失败</span>
                         )}
                       </p>
@@ -609,11 +672,10 @@ export default function FilesPage() {
                     </button>
                   </div>
                 ))}
-                {filteredFiles.length === 0 && (
+                {childFolders.length === 0 && filteredFiles.length === 0 && (
                   <div className="text-center py-12 text-[#6B7280]">
-                    <FileText className="h-12 w-12 mx-auto mb-3 text-[#E5E7EB]" />
-                    <p className="text-sm">暂无文件</p>
-                    <p className="text-xs mt-1">点击右上角上传文件</p>
+                    <FolderOpen className="h-12 w-12 mx-auto mb-3 text-[#E5E7EB]" />
+                    <p className="text-sm">暂无内容</p>
                   </div>
                 )}
               </div>

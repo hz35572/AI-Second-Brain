@@ -36,7 +36,7 @@ function parseContentWithCitations(content: string, citations: Citation[] = []) 
 }
 
 export function AssistantMessage({ content, citations, streaming }: AssistantMessageProps) {
-  const { parts, citationMap } = parseContentWithCitations(content, citations);
+  const { citationMap } = parseContentWithCitations(content, citations);
 
   return (
     <div className={cn("flex gap-3", streaming && "opacity-90")}>

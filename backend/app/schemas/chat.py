@@ -45,3 +45,7 @@ class ConversationListItem(BaseModel):
 class ConversationListResponseData(BaseModel):
     items: list[ConversationListItem]
 
+
+class ConversationUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+

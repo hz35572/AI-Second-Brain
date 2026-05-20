@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.file import File
@@ -16,6 +16,14 @@ class FolderRepository:
 
     async def list_by_user(self, user_id: uuid.UUID) -> list[Folder]:
         res = await self.db.execute(select(Folder).where(Folder.user_id == user_id).order_by(Folder.path))
+        return list(res.scalars().all())
+
+    async def list_descendants(self, *, user_id: uuid.UUID, path: str) -> list[Folder]:
+        res = await self.db.execute(
+            select(Folder)
+            .where(Folder.user_id == user_id, (Folder.path == path) | Folder.path.like(f"{path}/%"))
+            .order_by(Folder.path)
+        )
         return list(res.scalars().all())
 
     async def create(
@@ -36,3 +44,6 @@ class FolderRepository:
                 continue
             out[folder_id] = int(count)
         return out
+
+    async def delete(self, folder_id: uuid.UUID) -> None:
+        await self.db.execute(delete(Folder).where(Folder.id == folder_id))

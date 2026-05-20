@@ -7,6 +7,7 @@ class UploadResponseData(BaseModel):
     file_id: str
     task_id: str
     status: str
+    folder_id: str | None = None
 
 
 class UploadInitRequest(BaseModel):
@@ -27,6 +28,7 @@ class FileListItem(BaseModel):
     name: str
     file_size: int
     mime_type: str | None = None
+    folder_id: str | None = None
     page_count: int = 0
     summary: str | None = None
     tags: list[str] = Field(default_factory=list)

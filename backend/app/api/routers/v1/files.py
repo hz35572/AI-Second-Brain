@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.utils import ok, parse_uuid
@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("/upload", status_code=202)
 async def upload_file(
     file: UploadFile,
-    folder_id: str | None = None,
+    folder_id: str | None = Form(default=None),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,10 +94,12 @@ async def list_files(
     db: AsyncSession = Depends(get_db),
 ):
     _ = tag  # reserved for V1.5
-    folder_uuid = parse_uuid(folder_id, field="folder_id") if folder_id else None
+    root_only = folder_id == "root"
+    folder_uuid = parse_uuid(folder_id, field="folder_id") if folder_id and not root_only else None
     total, items = await FileRepository(db).list(
         user_id=current_user.id,
         folder_id=folder_uuid,
+        root_only=root_only,
         status=status,
         page=max(1, page),
         page_size=min(100, max(1, page_size)),
@@ -112,6 +114,7 @@ async def list_files(
             "summary": f.summary,
             "tags": [],
             "status": f.status,
+            "folder_id": str(f.folder_id) if f.folder_id else None,
             "created_at": f.created_at.isoformat(),
         }
         for f in items

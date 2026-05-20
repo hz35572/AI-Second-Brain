@@ -31,7 +31,7 @@ export function GithubCallbackContent() {
     handleGithubCallback(code)
       .then(({ token, user }) => {
         login(user);
-        localStorage.setItem("token", token);
+        localStorage.setItem("aisb_token", token);
         router.push("/chat");
       })
       .catch((err) => {

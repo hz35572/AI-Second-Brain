@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "@/store/chat";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
-import { cn } from "@/lib/utils";
 import { createConversation, getConversations, getMessages, sendChatMessage } from "@/lib/api/chat";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatComposer } from "@/components/chat/ChatComposer";
@@ -20,7 +19,7 @@ export default function ChatPage() {
   const conversationIdFromUrl = searchParams.get("conversation");
 
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const {
     conversations,
     currentConversationId,
@@ -37,7 +36,6 @@ export default function ChatPage() {
     appendStreamingContent,
     addStreamingCitations,
     resetStreaming,
-    updateConversationTitle,
   } = useChatStore();
   const { scope } = useUIStore();
 
@@ -67,7 +65,7 @@ export default function ChatPage() {
       setConversations(data.items);
       return data;
     },
-    enabled: !!user,
+    enabled: isAuthenticated,
     staleTime: 30 * 1000,
   });
 
@@ -79,7 +77,7 @@ export default function ChatPage() {
       setMessages(data.items);
       return data;
     },
-    enabled: !!currentConversationId && !!user,
+    enabled: !!currentConversationId && isAuthenticated,
     staleTime: 30 * 1000,
   });
 
@@ -182,7 +180,6 @@ export default function ChatPage() {
               : "新对话"}
           </h2>
         </div>
-        <ScopeSelector />
       </div>
 
       {error && (
@@ -197,7 +194,6 @@ export default function ChatPage() {
           messages={displayMessages}
           streamingContent={streamingContent}
           streamingCitations={streamingCitations}
-          isLoading={isLoading}
         />
       </div>
 
@@ -214,6 +210,9 @@ export default function ChatPage() {
             </button>
           </div>
         )}
+        <div className="mb-2">
+          <ScopeSelector />
+        </div>
         <ChatComposer onSend={handleSend} disabled={isLoading} />
       </div>
     </div>

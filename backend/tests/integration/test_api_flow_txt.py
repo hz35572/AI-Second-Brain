@@ -143,6 +143,90 @@ async def test_full_flow_txt_upload_and_chat_sse():
         assert files_response.status_code == 200
         assert all(item["id"] != file_id for item in files_response.json()["data"]["items"])
 
+        folder_response = await client.post("/api/v1/folders", json={"name": "待删除文件夹"}, headers=headers)
+        assert folder_response.status_code == 201
+        folder_id = folder_response.json()["data"]["id"]
+
+        folder_upload_content = b"Document uploaded inside a folder."
+        folder_upload_response = await client.post(
+            "/api/v1/files/upload",
+            files={"file": ("folder-doc.txt", folder_upload_content, "text/plain")},
+            data={"folder_id": folder_id},
+            headers=headers,
+        )
+        assert folder_upload_response.status_code == 202
+        folder_file_id = folder_upload_response.json()["data"]["file_id"]
+        assert folder_upload_response.json()["data"]["folder_id"] == folder_id
+
+        folder_files_response = await client.get(f"/api/v1/files?folder_id={folder_id}", headers=headers)
+        assert folder_files_response.status_code == 200
+        assert any(item["id"] == folder_file_id for item in folder_files_response.json()["data"]["items"])
+
+        root_files_response = await client.get("/api/v1/files?folder_id=root", headers=headers)
+        assert root_files_response.status_code == 200
+        assert all(item["id"] != folder_file_id for item in root_files_response.json()["data"]["items"])
+
+        child_response = await client.post(
+            "/api/v1/folders",
+            json={"name": "子文件夹", "parent_id": folder_id},
+            headers=headers,
+        )
+        assert child_response.status_code == 201
+
+        folder_delete_response = await client.delete(f"/api/v1/folders/{folder_id}", headers=headers)
+        assert folder_delete_response.status_code == 200
+        assert folder_delete_response.json()["data"] == {
+            "deleted": True,
+            "folder_id": folder_id,
+            "deleted_folder_count": 2,
+            "deleted_file_count": 1,
+        }
+
+        tree_response = await client.get("/api/v1/folders/tree", headers=headers)
+        assert tree_response.status_code == 200
+        assert "待删除文件夹" not in str(tree_response.json()["data"])
+
+
+@pytest.mark.asyncio
+async def test_direct_upload_uses_multipart_folder_id():
+    settings = get_settings()
+    if not await _can_connect(settings.database_url):
+        pytest.skip("Postgres not available; start services via docker-compose.yml")
+
+    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "..", "..", "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+    app = create_app()
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        email = f"test-{uuid.uuid4()}@example.com"
+        response = await _register_with_code(client, email=email, password="password1")
+        assert response.status_code == 201
+        headers = {"Authorization": f"Bearer {response.json()['data']['token']}"}
+
+        folder_response = await client.post("/api/v1/folders", json={"name": "上传目标"}, headers=headers)
+        assert folder_response.status_code == 201
+        folder_id = folder_response.json()["data"]["id"]
+
+        upload_response = await client.post(
+            "/api/v1/files/upload",
+            files={"file": ("folder-doc.txt", b"Document uploaded inside a folder.", "text/plain")},
+            data={"folder_id": folder_id},
+            headers=headers,
+        )
+        assert upload_response.status_code == 202
+        uploaded = upload_response.json()["data"]
+        assert uploaded["folder_id"] == folder_id
+
+        folder_files_response = await client.get(f"/api/v1/files?folder_id={folder_id}", headers=headers)
+        assert folder_files_response.status_code == 200
+        assert any(item["id"] == uploaded["file_id"] for item in folder_files_response.json()["data"]["items"])
+
+        root_files_response = await client.get("/api/v1/files?folder_id=root", headers=headers)
+        assert root_files_response.status_code == 200
+        assert all(item["id"] != uploaded["file_id"] for item in root_files_response.json()["data"]["items"])
+
 
 @pytest.mark.asyncio
 async def test_register_rejects_password_over_bcrypt_limit():

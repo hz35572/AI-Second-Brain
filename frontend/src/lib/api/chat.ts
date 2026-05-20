@@ -38,6 +38,32 @@ export async function getMessages(
   return res.data;
 }
 
+export async function renameConversation(conversationId: string, title: string): Promise<{
+  updated: boolean;
+  conversation_id: string;
+  title?: string;
+}> {
+  const res = await apiFetch<ApiResponse<{ updated: boolean; conversation_id: string; title?: string }>>(
+    `/chat/conversations/${conversationId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }
+  );
+  return res.data;
+}
+
+export async function deleteConversation(conversationId: string): Promise<{
+  deleted: boolean;
+  conversation_id: string;
+}> {
+  const res = await apiFetch<ApiResponse<{ deleted: boolean; conversation_id: string }>>(
+    `/chat/conversations/${conversationId}`,
+    { method: "DELETE" }
+  );
+  return res.data;
+}
+
 export interface ChatStreamCallbacks {
   onChunk?: (content: string) => void;
   onCitation?: (citations: Citation[]) => void;

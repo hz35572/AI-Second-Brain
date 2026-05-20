@@ -10,7 +10,7 @@ from app.api.utils import ok, parse_uuid
 from app.core.database import get_db
 from app.repositories.conversations import ConversationRepository
 from app.repositories.messages import MessageRepository
-from app.schemas.chat import ConversationCreateRequest, SendMessageRequest
+from app.schemas.chat import ConversationCreateRequest, ConversationUpdateRequest, SendMessageRequest
 from app.services.chat_service import ChatService
 
 router = APIRouter()
@@ -107,3 +107,36 @@ async def list_conversations(
             }
         )
     return ok({"items": items})
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: str,
+    payload: ConversationUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conv_uuid = parse_uuid(conversation_id, field="conversation_id")
+    repo = ConversationRepository(db)
+    conv = await repo.get(conv_uuid)
+    if not conv or conv.user_id != current_user.id:
+        return ok({"updated": False, "conversation_id": conversation_id})
+    conv.title = payload.title
+    await db.commit()
+    return ok({"updated": True, "conversation_id": conversation_id, "title": conv.title})
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conv_uuid = parse_uuid(conversation_id, field="conversation_id")
+    repo = ConversationRepository(db)
+    conv = await repo.get(conv_uuid)
+    if not conv or conv.user_id != current_user.id:
+        return ok({"deleted": False, "conversation_id": conversation_id})
+    await repo.delete(conv)
+    await db.commit()
+    return ok({"deleted": True, "conversation_id": conversation_id})
