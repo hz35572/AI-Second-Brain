@@ -210,7 +210,7 @@ export default function ChatPage() {
             </button>
           </div>
         )}
-        <div className="mb-2">
+        <div className="mb-2 flex justify-center">
           <ScopeSelector />
         </div>
         <ChatComposer onSend={handleSend} disabled={isLoading} />

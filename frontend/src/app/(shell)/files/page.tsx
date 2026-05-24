@@ -100,7 +100,7 @@ export default function FilesPage() {
   const [isDragActive, setIsDragActive] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "file" | "folder"; id: string; name: string } | null>(null);
 
-  useQuery({
+  const { data: filesData } = useQuery({
     queryKey: ["files", selectedFolderId],
     queryFn: async () => {
       const data = await getFiles({
@@ -288,9 +288,10 @@ export default function FilesPage() {
     [removeFolder, selectedFolderId, setSelectedFolderId, queryClient]
   );
 
+  const visibleFiles = filesData?.items ?? files;
   const filteredFiles = selectedFolderId
-    ? files.filter((f) => f.folder_id === selectedFolderId)
-    : files;
+    ? visibleFiles.filter((f) => f.folder_id === selectedFolderId)
+    : visibleFiles.filter((f) => !f.folder_id);
 
   const visibleFolders = foldersData ?? folders;
   const currentFolder = visibleFolders.find((f) => f.id === selectedFolderId);

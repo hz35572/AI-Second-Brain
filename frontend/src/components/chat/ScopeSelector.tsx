@@ -159,7 +159,7 @@ export function ScopeSelector() {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-2">
       <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F9FAFB] border border-[#E5E7EB] w-fit">
         {scopeOptions.map((option) => (
           <button
