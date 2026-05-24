@@ -160,7 +160,7 @@ export function ScopeSelector() {
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F9FAFB] border border-[#E5E7EB] w-fit">
+      <div className="flex w-fit items-center gap-1 rounded-xl border border-[#DDE3F0] bg-white/90 p-1 shadow-[0_10px_28px_rgba(30,41,59,0.06)]">
         {scopeOptions.map((option) => (
           <button
             key={option.value}
@@ -174,10 +174,10 @@ export function ScopeSelector() {
               }
             }}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              "flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors",
               currentType === option.value
-                ? "bg-white text-[#4F46E5] shadow-sm"
-                : "text-[#6B7280] hover:text-[#111827]"
+                ? "bg-[#F0EEFF] text-[#4F46E5] shadow-[0_6px_16px_rgba(79,70,229,0.10)]"
+                : "text-[#52617A] hover:bg-[#F8FAFF] hover:text-[#111827]"
             )}
           >
             {option.icon}
@@ -190,7 +190,7 @@ export function ScopeSelector() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs text-[#4F46E5] hover:bg-[#EEF2FF]"
+          className="h-9 rounded-lg text-sm text-[#4F46E5] hover:bg-[#EEF2FF]"
           onClick={handleOpenSelector}
         >
           {(scope as { ids: string[] }).ids.length > 0

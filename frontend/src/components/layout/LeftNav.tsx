@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Settings,
   Plus,
-  ChevronDown,
   BrainCircuit,
   LogOut,
   LogIn,
@@ -15,6 +14,8 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Search,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -87,27 +88,31 @@ export function LeftNav() {
 
   const navContent = (
     <>
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <BrainCircuit className="h-6 w-6 text-[#4F46E5]" />
+      <div className="px-6 pb-6 pt-8">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#4F46E5] shadow-[0_10px_28px_rgba(79,70,229,0.16)]">
+            <BrainCircuit className="h-7 w-7" />
+          </div>
           {!leftNavCollapsed && (
-            <h1 className="text-lg font-semibold text-[#111827] truncate">
+            <h1 className="truncate text-xl font-bold tracking-tight text-[#111827]">
               AI Second Brain
             </h1>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="ml-auto h-7 w-7 hidden lg:flex"
+            className="ml-auto hidden h-7 w-7 text-[#64748B] hover:bg-[#EEF2FF] lg:flex"
             onClick={toggleLeftNav}
+            aria-label="折叠侧边栏"
           >
             <ChevronDown className={cn("h-4 w-4 transition-transform", leftNavCollapsed ? "-rotate-90" : "rotate-90")} />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="ml-auto h-7 w-7 lg:hidden"
+            className="ml-auto h-7 w-7 text-[#64748B] hover:bg-[#EEF2FF] lg:hidden"
             onClick={() => setMobileOpen(false)}
+            aria-label="关闭侧边栏"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -116,7 +121,7 @@ export function LeftNav() {
         {isAuthenticated ? (
           <>
             <Button
-              className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
+              className="h-12 w-full rounded-xl bg-[#4F46E5] text-base font-medium text-white shadow-[0_14px_30px_rgba(79,70,229,0.28)] hover:bg-[#4338CA]"
               onClick={handleNewChat}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -126,8 +131,8 @@ export function LeftNav() {
             <Button
               variant="ghost"
               className={cn(
-                "w-full justify-start gap-2 mt-2 text-[#111827] hover:bg-[#EEF2FF]",
-                pathname === "/files" && "bg-[#EEF2FF] text-[#4F46E5]"
+                "mt-7 h-11 w-full justify-start gap-3 rounded-xl px-4 text-[15px] font-medium text-[#0F172A] hover:bg-[#EEF2FF]",
+                pathname === "/files" && "bg-[#EEF2FF] text-[#4F46E5] shadow-[inset_0_0_0_1px_rgba(79,70,229,0.04)]"
               )}
               onClick={() => router.push("/files")}
             >
@@ -137,7 +142,7 @@ export function LeftNav() {
           </>
         ) : (
           <Button
-            className="w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white"
+            className="h-12 w-full rounded-xl bg-[#4F46E5] text-base font-medium text-white shadow-[0_14px_30px_rgba(79,70,229,0.28)] hover:bg-[#4338CA]"
             onClick={() => router.push("/login")}
           >
             <LogIn className="h-4 w-4 mr-2" />
@@ -146,18 +151,19 @@ export function LeftNav() {
         )}
       </div>
 
-      <Separator className="bg-[#E5E7EB]" />
+      <Separator className="bg-[#E7EAF3]" />
 
       {isAuthenticated && (
-        <ScrollArea className="flex-1 px-3 py-3">
+        <ScrollArea className="flex-1 px-4 py-6">
           <div className="space-y-4">
             <div>
               {!leftNavCollapsed && (
-                <h3 className="text-xs font-medium text-[#6B7280] uppercase tracking-wider mb-2 px-2">
-                  近期对话
-                </h3>
+                <div className="mb-4 flex items-center justify-between px-1">
+                  <h3 className="text-sm font-medium text-[#7A86A1]">最近对话</h3>
+                  <Search className="h-4 w-4 text-[#66708A]" />
+                </div>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-2">
                 {conversations.slice(0, 20).map((conv) => (
                   <button
                     key={conv.id}
@@ -166,16 +172,23 @@ export function LeftNav() {
                       router.push(`/chat?conversation=${conv.id}`);
                     }}
                     className={cn(
-                      "group flex items-center w-full rounded-md px-2 py-1.5 text-sm transition-colors text-left",
+                      "group flex w-full items-center rounded-xl px-3 py-3 text-left text-sm transition-colors",
                       pathname === `/chat` && conv.id === new URLSearchParams(window.location.search).get("conversation")
-                        ? "bg-[#EEF2FF] text-[#4F46E5]"
-                        : "text-[#111827] hover:bg-[#EEF2FF]"
+                        ? "bg-[#F0EEFF] text-[#4F46E5]"
+                        : "text-[#25324D] hover:bg-[#F4F6FF]"
                     )}
                   >
-                    <MessageSquare className="h-3.5 w-3.5 shrink-0 mr-2" />
+                    <MessageSquare className="mr-2 h-4 w-4 shrink-0" />
                     {!leftNavCollapsed && (
                       <>
-                        <span className="truncate flex-1">{conv.title}</span>
+                        <span className="flex-1 truncate font-medium">{conv.title}</span>
+                        <span className="ml-2 shrink-0 text-xs font-normal text-[#7A86A1]">
+                          {new Date(conv.updated_at || conv.created_at).toLocaleTimeString("zh-CN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
@@ -224,7 +237,7 @@ export function LeftNav() {
                   </button>
                 ))}
                 {conversations.length === 0 && !leftNavCollapsed && (
-                  <p className="text-xs text-[#6B7280] px-2 py-2">暂无对话</p>
+                  <p className="px-2 py-2 text-xs text-[#7A86A1]">暂无对话</p>
                 )}
               </div>
             </div>
@@ -232,28 +245,34 @@ export function LeftNav() {
         </ScrollArea>
       )}
 
-      {isAuthenticated && <Separator className="bg-[#E5E7EB]" />}
+      {isAuthenticated && <Separator className="bg-[#E7EAF3]" />}
 
-      <div className="p-3">
+      <div className="p-5">
         {isAuthenticated ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <div
                   className={cn(
-                    "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground w-full justify-start gap-2 cursor-pointer",
+                    "group/button inline-flex shrink-0 items-center justify-center rounded-2xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none hover:bg-[#F4F6FF] aria-expanded:bg-[#F4F6FF] w-full justify-start gap-3 cursor-pointer px-0 py-2",
                     leftNavCollapsed && "px-2"
                   )}
                 />
               }
             >
-              <div className="h-7 w-7 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-medium shrink-0">
-                {user?.name?.charAt(0)?.toUpperCase() || "U"}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4F46E5] text-base font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)]">
+                {user?.name?.charAt(0)?.toUpperCase() || "A"}
               </div>
               {!leftNavCollapsed && (
-                <span className="text-sm text-[#111827] truncate">
-                  {user?.name || "用户"}
-                </span>
+                <>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="truncate text-sm font-semibold text-[#111827]">
+                      {user?.name || "admin"}
+                    </div>
+                    <div className="text-xs text-[#7A86A1]">管理员</div>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-[#25324D]" />
+                </>
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -321,7 +340,7 @@ export function LeftNav() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 bg-white shadow-sm border border-[#E5E7EB]"
+          className="h-9 w-9 border border-[#E7EAF3] bg-white shadow-sm"
           onClick={() => setMobileOpen(true)}
         >
           <Menu className="h-5 w-5" />
@@ -339,7 +358,7 @@ export function LeftNav() {
       {/* Mobile sidebar */}
       <aside
         className={cn(
-          "lg:hidden fixed inset-y-0 left-0 z-50 w-[260px] border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col transition-transform duration-300",
+          "fixed inset-y-0 left-0 z-50 flex w-[284px] flex-col border-r border-[#E7EAF3] bg-[#FBFCFF] transition-transform duration-300 lg:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -349,8 +368,8 @@ export function LeftNav() {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "hidden lg:flex border-r border-[#E5E7EB] bg-[#F9FAFB] flex-col transition-all duration-300",
-          leftNavCollapsed ? "w-16" : "w-[260px]"
+          "hidden flex-col border-r border-[#E7EAF3] bg-[#FBFCFF] transition-all duration-300 lg:flex",
+          leftNavCollapsed ? "w-20" : "w-[284px]"
         )}
       >
         {navContent}

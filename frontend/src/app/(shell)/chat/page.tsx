@@ -10,16 +10,47 @@ import { createConversation, getConversations, getMessages, sendChatMessage } fr
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ScopeSelector } from "@/components/chat/ScopeSelector";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Bot, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { Message } from "@/lib/api/types";
+
+function NewChatHero({ userName }: { userName: string }) {
+  return (
+    <div className="mx-auto grid w-full max-w-[1160px] items-center gap-8 px-8 pb-8 pt-10 lg:grid-cols-[1fr_420px]">
+      <div>
+        <h1 className="text-[36px] font-bold leading-[1.25] tracking-normal text-[#07143B]">
+          嗨， <span className="text-[#4F46E5]">{userName}</span>
+          <br />
+          有什么可以帮您?
+        </h1>
+        <p className="mt-5 text-base text-[#596783]">
+          基于您的知识库，我可以帮您查找信息、解答问题、分析文档内容
+        </p>
+      </div>
+      <div className="hidden justify-end lg:flex">
+        <div className="relative h-[210px] w-[360px] max-w-full opacity-95">
+          <div className="absolute left-8 top-9 h-28 w-56 rotate-[-18deg] rounded-[34px] border border-[#DCE1FF] bg-[#F4F6FF]/70 shadow-[0_28px_70px_rgba(79,70,229,0.18)]" />
+          <div className="absolute left-20 top-3 h-32 w-56 rotate-[26deg] rounded-[30px] bg-gradient-to-br from-[#F7F8FF] to-[#E9ECFF] opacity-80 shadow-[0_20px_60px_rgba(79,70,229,0.12)]" />
+          <div className="absolute left-[110px] top-12 flex h-24 w-28 items-center justify-center rounded-[32px] bg-gradient-to-br from-[#A7AAFF] via-[#6960F6] to-[#4438D9] shadow-[0_18px_44px_rgba(79,70,229,0.28)]">
+            <Bot className="h-14 w-14 text-white/80" />
+          </div>
+          <div className="absolute left-7 top-2 h-2 w-2 rounded-full bg-[#5B50F1]" />
+          <div className="absolute right-9 top-15 h-2 w-2 rounded-full bg-[#5B50F1]" />
+          <div className="absolute right-17 bottom-12 h-2 w-2 rounded-full bg-[#5B50F1]" />
+          <div className="absolute left-2 top-20 h-px w-40 rotate-[-24deg] bg-[#CDD3FF]" />
+          <div className="absolute right-10 top-25 h-px w-32 rotate-[24deg] bg-[#CDD3FF]" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const conversationIdFromUrl = searchParams.get("conversation");
 
   const queryClient = useQueryClient();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const {
     conversations,
     currentConversationId,
@@ -169,17 +200,16 @@ export default function ChatPage() {
   const displayMessages = currentConversationId
     ? messages
     : messages.filter((m) => m.id.startsWith("u-") || m.id.startsWith("a-"));
+  const currentTitle = currentConversationId
+    ? conversations.find((c) => c.id === currentConversationId)?.title || "对话"
+    : "新对话";
+  const showNewChatHero = !currentConversationId && displayMessages.length === 0 && !streamingContent;
+  const userName = user?.name || "admin";
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E7EB] bg-white">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-[#111827]">
-            {currentConversationId
-              ? conversations.find((c) => c.id === currentConversationId)?.title || "对话"
-              : "新对话"}
-          </h2>
-        </div>
+    <div className="flex h-full flex-col">
+      <div className="flex h-[72px] items-center justify-between border-b border-[#E7EAF3] bg-white/90 px-9">
+        <h2 className="text-lg font-bold text-[#07143B]">{currentTitle}</h2>
       </div>
 
       {error && (
@@ -189,17 +219,20 @@ export default function ChatPage() {
         </Alert>
       )}
 
-      <div className="flex-1 overflow-hidden">
-        <MessageList
-          messages={displayMessages}
-          streamingContent={streamingContent}
-          streamingCitations={streamingCitations}
-        />
+      <div className="min-h-0 flex-1 overflow-hidden px-8 py-0">
+        <div className="h-full bg-white">
+          {showNewChatHero && <NewChatHero userName={userName} />}
+          <MessageList
+            messages={displayMessages}
+            streamingContent={streamingContent}
+            streamingCitations={streamingCitations}
+          />
+        </div>
       </div>
 
-      <div className="shrink-0 border-t border-[#E5E7EB] bg-white px-4 py-3">
+      <div className="shrink-0 bg-[#FBFCFF] px-8 pb-9 pt-4">
         {isLoading && (
-          <div className="flex items-center gap-2 mb-2 text-xs text-[#6B7280]">
+          <div className="mx-auto mb-2 flex max-w-[1060px] items-center gap-2 text-xs text-[#6B7280]">
             <Loader2 className="h-3 w-3 animate-spin" />
             AI 正在思考...
             <button
@@ -210,7 +243,7 @@ export default function ChatPage() {
             </button>
           </div>
         )}
-        <div className="mb-2 flex justify-center">
+        <div className="mb-5 flex justify-center">
           <ScopeSelector />
         </div>
         <ChatComposer onSend={handleSend} disabled={isLoading} />
