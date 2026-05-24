@@ -1,48 +1,116 @@
 ---
 name: ui-design
-description: UI design guidance for building polished, usable product interfaces in this repository, especially the AI Second Brain frontend. Use when designing or reviewing app screens, layouts, component states, interaction patterns, visual hierarchy, responsive behavior, empty/loading/error states, or when translating product requirements into frontend UI.
+description: Create distinctive, production-grade frontend interfaces directly in code with a strong visual point of view. Use when Codex is asked to design or redesign a page, screen, flow, or component; improve UI quality; or ship polished frontend experiences that must feel intentional and non-generic. Default to Next.js unless the user specifies another framework, and use targeted 21st.dev inspiration with screenshot capture only for specific components that need references.
 ---
 
 # UI Design
 
-Use this skill when shaping product UI for this repo, especially the chat, file management, upload, preview, and citation experiences.
+## Overview
 
-## Design Priorities
+Build frontend code directly in the user's project with a clear design direction and production quality.
 
-- Keep the experience task-first, calm, and scan-friendly.
-- Favor dense but organized layouts over decorative composition.
-- Make the primary workflow visible immediately; avoid marketing-style framing.
-- Preserve the citation-first contract: every answer point should be traceable, and citation UI must support click-to-open and locate/highlight behavior.
-- Treat responsive behavior, loading states, and empty states as first-class work.
+Prefer implementation over mockups unless the user explicitly asks for design-only output.
 
-## Before Designing
+Default to Next.js unless the user requests another framework.
 
-1. Read the relevant product, frontend, and API docs.
-2. Identify the exact workflow, state model, and failure modes.
-3. Confirm the screen’s place in the broader three-column app layout.
-4. Check whether the change affects citation behavior, scope selection, upload progress, or preview positioning.
+## Workflow
 
-## Layout Rules
+Follow these steps in order.
 
-- Use clear structural hierarchy: navigation, work area, and contextual preview or details.
-- Keep sections full-width bands or disciplined panels; do not stack unnecessary cards inside cards.
-- Use stable sizing for toolbars, panes, lists, and message streams so content changes do not shift the layout.
-- Ensure text stays within its container at common desktop and mobile widths.
-- Prefer compact controls, visible states, and direct manipulation over explanatory copy.
+### Step 0: Security gate for Next.js (CVE-2025-55182)
 
-## Component Guidance
+If the project uses Next.js, verify the installed `next` version before doing implementation work.
 
-- Use icons for utility actions when a strong standard icon exists.
-- Use tabs, segmented controls, toggles, menus, sliders, and text inputs for control states that users expect.
-- Keep cards and surfaces restrained; avoid oversized radius unless the existing design system already does that.
-- Design loading, empty, partial, and error states alongside the default state.
-- For citation interactions, make the click target obvious and keep the source preview behavior discoverable without adding extra prose.
+Treat these versions as vulnerable and require upgrade first:
 
-## Review Checklist
+- `>=14.3.0-canary.77` and `<15.0.5`
+- `>=15.1.0-canary.0` and `<15.1.9`
+- `>=15.2.0-canary.0` and `<15.2.6`
+- `>=15.3.0-canary.0` and `<15.3.6`
+- `>=15.4.0-canary.0` and `<15.4.8`
+- `>=15.5.0-canary.0` and `<15.5.7`
+- `>=16.0.0-canary.0` and `<16.0.7`
 
-1. Does the screen fit the repository’s chat-first, work-focused product direction?
-2. Is the main task easy to locate and complete?
-3. Do all critical states have a visual answer?
-4. Does the layout remain stable when content grows, streams, or wraps?
-5. Does the design preserve citation traceability and preview behavior?
+Accept only patched versions for this CVE:
 
+- `15.0.5`, `15.1.9`, `15.2.6`, `15.3.6`, `15.4.8`, `15.5.7` or newer patch in those lines
+- `16.0.7` or newer
+- `15.6.0-canary.58+` and `16.1.0-canary.12+`
+
+`13.x` and `14.x` stable releases are not affected by this CVE.
+
+When version status is unclear, upgrade to the latest stable Next.js release before continuing.
+
+### Step 1: Confirm implementation brief
+
+Collect only the critical inputs:
+
+- Deliverable type (page, section, flow, component)
+- Target devices (desktop, mobile, responsive)
+- Framework and constraints (default Next.js)
+- Required states and interactions
+- Brand constraints (color, typography, voice)
+
+Ask concise follow-up questions only when blocked by missing requirements.
+
+### Step 2: Define design direction before coding
+
+Commit to a concrete direction before writing code:
+
+- Purpose and audience
+- Tone and aesthetic
+- Layout and hierarchy strategy
+- Typography and color system
+- Motion strategy
+- Signature differentiator (one memorable element)
+
+Load `references/design-direction.md` when creating or pressure-testing the direction.
+
+### Step 3: Use targeted inspiration only when needed
+
+Use 21st.dev only for specific components that benefit from references.
+
+Do not run broad inspiration passes.
+
+When targeted inspiration is needed:
+
+1. Verify screenshot capture capability is available.
+2. Verify web/browser search capability is available.
+3. Capture only the minimum references needed.
+4. Synthesize patterns instead of cloning.
+
+If screenshot capture is unavailable, stop and tell the user:
+"This workflow requires screenshot capture for targeted component inspiration. Install the screenshot skill and retry."
+
+If web search is unavailable, stop and tell the user to restart with search enabled.
+
+Load `references/component-inspiration.md` when this step is needed.
+
+### Step 4: Implement in project code
+
+Implement directly in the user's codebase:
+
+- Reuse existing components and conventions first.
+- Maintain responsive behavior and accessible states.
+- Avoid generic AI-looking structure, spacing, and styling defaults.
+- Keep visuals cohesive with the selected direction.
+
+### Step 5: Validate and deliver
+
+Before finishing:
+
+- Run relevant lint/test/build checks for changed files.
+- Verify responsive behavior and critical interaction states.
+- Confirm the implementation matches the declared direction.
+
+Load `references/validation-checklist.md` to run a final quality pass.
+
+## Output requirements
+
+In the final response, include:
+
+- Chosen design direction and signature differentiator
+- Which components used targeted inspiration (if any)
+- Framework used (default Next.js or user override)
+- Concrete files changed
+- Validation status (what was run and what was not)
