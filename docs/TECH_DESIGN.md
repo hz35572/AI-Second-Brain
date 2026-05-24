@@ -241,7 +241,6 @@ RAG 模块边界：
 - `app.rag.retriever`：global/file/folder scope 解析与用户隔离
 - `app.rag.generator`：严格基于上下文生成，要求每个事实句或要点包含引用标记
 - `app.agent.workflow`：LangGraph 问答编排层，负责 load_context -> retrieve -> generate -> validate/repair/degrade -> emit
-- `app.rag.pipeline`：兼容旧导入的轻量外壳，委托 `app.agent.workflow.QAAgentWorkflow`
 
 删除一致性：
 
@@ -289,7 +288,7 @@ chunk* -> citation? -> done
 - 任务进度响应契约
 - Chat SSE 事件顺序
 - CitationValidator 的逐句引用校验与降级行为
-- RAG embedding/vector store/retriever/pipeline 的 mock 单元测试
+- RAG embedding/vector store/retriever 与 LangGraph agent workflow 的 mock 单元测试
 
 验收标准：
 
