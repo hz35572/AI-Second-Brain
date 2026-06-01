@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
+import { API_BASE } from "./config";
 
 export function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;

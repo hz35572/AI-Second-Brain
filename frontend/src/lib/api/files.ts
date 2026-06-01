@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { API_BASE } from "./config";
 import type { ApiResponse, FileItem, Folder, TaskProgress } from "./types";
 
 type FolderTreeNode = {
@@ -65,8 +66,7 @@ export async function uploadFile(file: File, folderId?: string): Promise<{
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
-  const res = await fetch(`${base}/files/upload`, {
+  const res = await fetch(`${API_BASE}/files/upload`, {
     method: "POST",
     headers,
     body: formData,
@@ -102,8 +102,7 @@ export async function uploadChunk(
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
-  const res = await fetch(`${base}/files/upload/${uploadId}/chunks/${chunkIndex}`, {
+  const res = await fetch(`${API_BASE}/files/upload/${uploadId}/chunks/${chunkIndex}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/octet-stream",

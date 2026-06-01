@@ -164,60 +164,65 @@ export function LeftNav() {
                 </div>
               )}
               <div className="space-y-2">
-                {conversations.slice(0, 20).map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => {
-                      setCurrentConversationId(conv.id);
-                      router.push(`/chat?conversation=${conv.id}`);
-                    }}
-                    className={cn(
-                      "group flex w-full items-center rounded-xl px-3 py-3 text-left text-sm transition-colors",
-                      pathname === `/chat` && conv.id === new URLSearchParams(window.location.search).get("conversation")
-                        ? "bg-[#F0EEFF] text-[#4F46E5]"
-                        : "text-[#25324D] hover:bg-[#F4F6FF]"
-                    )}
-                  >
-                    <MessageSquare className="mr-2 h-4 w-4 shrink-0" />
-                    {!leftNavCollapsed && (
-                      <>
-                        <span className="flex-1 truncate font-medium">{conv.title}</span>
-                        <span className="ml-2 shrink-0 text-xs font-normal text-[#7A86A1]">
-                          {new Date(conv.updated_at || conv.created_at).toLocaleTimeString("zh-CN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })}
-                        </span>
+                {conversations.slice(0, 20).map((conv) => {
+                  const isActive =
+                    pathname === "/chat" &&
+                    conv.id === new URLSearchParams(window.location.search).get("conversation");
+
+                  return (
+                    <div
+                      key={conv.id}
+                      className={cn(
+                        "group flex items-center rounded-xl text-sm transition-colors",
+                        isActive
+                          ? "bg-[#F0EEFF] text-[#4F46E5]"
+                          : "text-[#25324D] hover:bg-[#F4F6FF]"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentConversationId(conv.id);
+                          router.push(`/chat?conversation=${conv.id}`);
+                        }}
+                        className="flex min-w-0 flex-1 items-center px-3 py-3 text-left"
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4 shrink-0" />
+                        {!leftNavCollapsed && (
+                          <>
+                            <span className="flex-1 truncate font-medium">{conv.title}</span>
+                            <span className="ml-2 shrink-0 text-xs font-normal text-[#7A86A1]">
+                              {new Date(conv.updated_at || conv.created_at).toLocaleTimeString("zh-CN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false,
+                              })}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                      {!leftNavCollapsed && (
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="ml-1 h-7 w-7 opacity-0 group-hover:opacity-100"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                type="button"
+                                className="mr-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-sm font-medium opacity-0 transition-all outline-none select-none group-hover:opacity-100 hover:bg-[#EEF2FF] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                aria-label="对话菜单"
                               />
                             }
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-36">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openRename(conv.id);
-                              }}
-                            >
+                            <DropdownMenuItem onClick={() => openRename(conv.id)}>
                               <Pencil className="h-4 w-4 mr-2" />
                               重命名
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
-                              onClick={async (e) => {
-                                e.stopPropagation();
+                              onClick={async () => {
                                 await deleteConversation(conv.id);
-                                // Refresh list (simple + consistent)
                                 const data = await getConversations({ page: 1, page_size: 50 });
                                 setConversations(data.items);
                                 const currentId = new URLSearchParams(window.location.search).get("conversation");
@@ -232,10 +237,10 @@ export function LeftNav() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </>
-                    )}
-                  </button>
-                ))}
+                      )}
+                    </div>
+                  );
+                })}
                 {conversations.length === 0 && !leftNavCollapsed && (
                   <p className="px-2 py-2 text-xs text-[#7A86A1]">暂无对话</p>
                 )}
@@ -252,11 +257,13 @@ export function LeftNav() {
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <div
+                <button
+                  type="button"
                   className={cn(
                     "group/button inline-flex shrink-0 items-center justify-center rounded-2xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none hover:bg-[#F4F6FF] aria-expanded:bg-[#F4F6FF] w-full justify-start gap-3 cursor-pointer px-0 py-2",
                     leftNavCollapsed && "px-2"
                   )}
+                  aria-label="用户菜单"
                 />
               }
             >

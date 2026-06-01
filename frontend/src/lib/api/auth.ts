@@ -1,6 +1,5 @@
 import { User } from "@/store/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
+import { API_BASE } from "./config";
 
 export interface LoginCredentials {
   email: string;
@@ -33,14 +32,19 @@ export interface AuthResponse {
 }
 
 export async function login(credentials: LoginCredentials): Promise<{ token: string; user: User }> {
-  const response = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(credentials),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+  } catch {
+    throw new Error("无法连接后端服务，请确认后端已启动");
+  }
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({}));
     throw new Error(error.message || "登录失败");
   }
 
