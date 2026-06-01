@@ -50,7 +50,6 @@
 ├─ backend/    # FastAPI 服务（/api/v1）
 ├─ frontend/   # Next.js Web UI
 ├─ docs/       # PRD / TDD / API / Database 等文档（单一事实来源）
-├─ infra/      # 部署/基础设施相关（如有）
 └─ docker-compose.yml  # Postgres / Redis / Qdrant / MinIO
 ```
 
@@ -80,8 +79,8 @@
 
 根目录复制一份环境变量文件：
 
-```powershell
-Copy-Item .env.example .env
+```shell
+copy .env.example .env
 ```
 
 按需修改 `.env`（后端配置变量统一使用 `AISB_` 前缀）。最小可用配置见：
