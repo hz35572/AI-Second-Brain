@@ -26,8 +26,9 @@ def _chunk(index: int = 1) -> RetrievedChunk:
 
 
 class FakeRetriever:
-    def __init__(self, chunks: list[RetrievedChunk]):
+    def __init__(self, chunks: list[RetrievedChunk], metadata: dict | None = None):
         self.chunks = chunks
+        self.last_metadata = metadata or {}
         self.calls: list[dict] = []
 
     async def retrieve(self, **kwargs) -> list[RetrievedChunk]:
@@ -47,12 +48,19 @@ class FakeGenerator:
 
 @pytest.mark.asyncio
 async def test_agent_workflow_returns_cited_answer() -> None:
-    workflow = QAAgentWorkflow(None, retriever=FakeRetriever([_chunk()]), generator=FakeGenerator("有依据的回答 [1]"))
+    workflow = QAAgentWorkflow(
+        None,
+        retriever=FakeRetriever([_chunk()], {"retrieval_strategy": "hybrid_rrf_rerank", "reranked_count": 1}),
+        generator=FakeGenerator("有依据的回答 [1]"),
+    )
     result = await workflow.answer(user_id=uuid.uuid4(), question="what", scope_type="global", scope_ids=[])
 
     assert result.answer == "有依据的回答 [1]"
     assert len(result.citations) == 1
     assert result.metadata["retrieved_count"] == 1
+    assert result.metadata["selected_count"] == 1
+    assert result.metadata["retrieval_strategy"] == "hybrid_rrf_rerank"
+    assert result.metadata["reranked_count"] == 1
     assert result.metadata["validation_status"] == "valid"
 
 
@@ -74,4 +82,3 @@ async def test_agent_workflow_degrades_invalid_citation() -> None:
     assert result.answer == NOT_FOUND_ANSWER
     assert result.citations == []
     assert result.metadata["validation_status"] == "degraded"
-
