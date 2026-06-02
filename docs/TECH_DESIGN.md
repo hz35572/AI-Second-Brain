@@ -94,6 +94,16 @@ AISB_LLM_PROVIDER=dashscope
 AISB_OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 AISB_OPENAI_API_KEY=<provider-api-key>
 AISB_AI_MODEL=deepseek-v4-flash
+AISB_RAG_HYBRID_SEARCH=true
+AISB_RAG_VECTOR_TOP_K=30
+AISB_RAG_KEYWORD_TOP_K=30
+AISB_RAG_RERANK_TOP_K=8
+AISB_RAG_CONTEXT_MAX_CHUNKS=6
+AISB_RAG_MIN_RELEVANCE_SCORE=0.35
+AISB_RERANK_PROVIDER=dashscope
+AISB_RERANK_MODEL=qwen3-rerank
+AISB_RERANK_BASE_URL=https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
+AISB_RERANK_API_KEY=<dashscope-api-key>
 ```
 
 日志配置：
@@ -228,18 +238,26 @@ AISB_EMAIL_CODE_MAX_ATTEMPTS=5
 问答流程：
 
 1. 解析用户范围：`global`、`folder` 或 `file`
-2. `app.agent.workflow.QAAgentWorkflow` 使用 LangGraph 编排最小问答闭环：`load_context -> retrieve -> generate -> validate -> emit`
-3. `app.rag.retriever.RAGRetriever` 按 `user_id` 和范围过滤，从 Qdrant 检索 top-k chunks，并回查 PostgreSQL 补齐文件名与 locator
+2. `app.agent.workflow.QAAgentWorkflow` 使用 LangGraph 编排最小问答闭环：`load_context -> retrieve -> generate -> validate -> emit`；测试/本地环境缺少 LangGraph 依赖时使用同节点顺序的轻量 fallback
+3. `app.rag.retriever.RAGRetriever` 按 `user_id` 和范围过滤，默认执行 query normalization、query variants、Qdrant 向量召回、轻量 BM25 关键词召回、RRF 融合、qwen3-rerank 重排序，并回查 PostgreSQL 补齐文件名与 locator
 4. `app.rag.generator.RAGGenerator` 用编号上下文块构建 prompt；有 `AISB_OPENAI_API_KEY` 时通过 OpenAI-compatible Chat Completions 接口调用 LLM，可用 `AISB_OPENAI_BASE_URL` 指向阿里云百炼等兼容服务；无 key 的本地/测试环境使用抽取式回答
 5. LangGraph `validate` 节点校验逐句引用，失败时重试一次引用修复；仍失败则返回“知识库中未找到相关内容。”
 6. Chat SSE 保持 `chunk* -> citation? -> done`，citation 载荷仍来自 `docs/API.md` 的 Citation 结构
+
+增强检索策略：
+
+- 关键词召回 MVP 不引入 Elasticsearch，先基于 PostgreSQL 中的 `file_chunks.content` 做进程内 BM25 排序；后续如新增持久化索引或评测表，必须同步更新 `docs/database.md` 与 Alembic migration。
+- 重排序默认使用阿里云 DashScope `qwen3-rerank`，通过 `AISB_RERANK_*` 配置；无 API key、超时或调用失败时降级为融合排序结果，并在 SSE metadata 中标记 `rerank_degraded=true`。
+- 最终进入 prompt 的主 chunk 默认最多 6 个；相邻 chunk 可作为补充上下文，但不会获得独立引用编号，避免引用不可定位。
 
 RAG 模块边界：
 
 - `app.rag.embeddings`：默认使用硅基流动 `BAAI/bge-m3`，通过 `AISB_SILICONFLOW_API_KEY` 和 `AISB_SILICONFLOW_BASE_URL` 调用 OpenAI-compatible embeddings 接口；也可切换 `openai/local` provider，向量维度按模型确定
 - `app.rag.vector_store`：Qdrant collection 初始化、upsert、search、按文件删除；payload 必须包含 `user_id/file_id/chunk_id/folder_id/page_number/chunk_index/locator`
-- `app.rag.retriever`：global/file/folder scope 解析与用户隔离
-- `app.rag.generator`：严格基于上下文生成，要求每个事实句或要点包含引用标记
+- `app.rag.query`：query normalization、关键词抽取与最多 3 个 query variants 生成
+- `app.rag.reranker`：DashScope qwen3-rerank 调用与安全降级
+- `app.rag.retriever`：global/file/folder scope 解析、用户隔离、混合召回、RRF 融合、rerank 与相邻 chunk 补充上下文
+- `app.rag.generator`：严格基于编号上下文生成，要求每个事实句或要点包含引用标记；未编号的相邻上下文只用于理解，不得单独引用
 - `app.agent.workflow`：LangGraph 问答编排层，负责 load_context -> retrieve -> generate -> validate/repair/degrade -> emit
 
 删除一致性：

@@ -556,6 +556,7 @@ SSE 事件类型定义：
 引用完整性约束（MVP）：
 
 - Answer 文本中的事实句必须包含引用标记（如 `[1]`）；服务端需做校验与必要降级。
+- `done.metadata` 可包含 RAG 诊断字段，例如 `retrieval_strategy`、`normalized_query`、`query_variants`、`retrieved_count`、`selected_count`、`rerank_model`、`reranked_count`、`rerank_degraded`、`retrieval_ms` 和 `validation_status`；这些字段不改变 SSE 事件顺序和 Citation 结构。
 
 ### 5.3 获取对话历史
 
