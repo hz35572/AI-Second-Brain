@@ -123,10 +123,156 @@ def _markdown_chunk_content(path: list[str], blocks: list[ParsedBlock]) -> str:
     return body or prefix
 
 
+def _markdown_content_with_prefix(path: list[str], body: str) -> str:
+    prefix = _markdown_heading_prefix(path)
+    body = _clean_markdown_text(body)
+    if prefix and body:
+        return f"{prefix}\n\n{body}"
+    return body or prefix
+
+
 def _markdown_chunk_locator(start_pos: int | None, end_pos: int | None) -> dict | None:
     if start_pos is None or end_pos is None:
         return None
     return {"type": "markdown", "start": start_pos, "end": end_pos}
+
+
+def _markdown_chunk_locator_with_path(start_pos: int | None, end_pos: int | None, path: list[str]) -> dict | None:
+    locator = _markdown_chunk_locator(start_pos, end_pos)
+    if locator is None:
+        return None
+    locator["path"] = [item for item in path if item]
+    return locator
+
+
+def _trim_piece_span(text: str, start: int, end: int) -> tuple[str, int, int]:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return text[start:end], start, end
+
+
+def _best_markdown_split(text: str, *, start: int, target: int, minimum: int) -> int:
+    search_start = max(start + minimum, start + 1)
+    window = text[search_start:target]
+    for delimiter in ("\n\n", "\n"):
+        relative = window.rfind(delimiter)
+        if relative >= 0:
+            return search_start + relative + len(delimiter)
+
+    sentence_end = -1
+    for match in re.finditer(r"[。！？.!?]\s+", window):
+        sentence_end = match.end()
+    if sentence_end >= 0:
+        return search_start + sentence_end
+    return target
+
+
+def _split_markdown_body(
+    *,
+    body: str,
+    absolute_start: int,
+    chunk_size: int,
+    prefix_chars: int,
+) -> list[tuple[str, int, int]]:
+    stripped_body, trim_start, trim_end = _trim_piece_span(body, 0, len(body))
+    if not stripped_body:
+        return []
+
+    budget = max(120, chunk_size - prefix_chars - 2)
+    if len(stripped_body) <= budget:
+        return [(stripped_body, absolute_start + trim_start, absolute_start + trim_end)]
+
+    pieces: list[tuple[str, int, int]] = []
+    start = trim_start
+    while start < trim_end:
+        target = min(trim_end, start + budget)
+        if target < trim_end:
+            target = _best_markdown_split(body, start=start, target=target, minimum=max(40, budget // 2))
+        piece, piece_start, piece_end = _trim_piece_span(body, start, target)
+        if piece:
+            pieces.append((piece, absolute_start + piece_start, absolute_start + piece_end))
+        if target >= trim_end:
+            break
+        start = target
+    return pieces
+
+
+def _split_markdown_block(
+    *,
+    path: list[str],
+    block: ParsedBlock,
+    chunk_size: int,
+) -> list[TextChunk]:
+    block_start = _block_start(block)
+    block_end = _block_end(block)
+    if block_start is None or block_end is None:
+        return []
+
+    body = _markdown_block_body(block)
+    content = _markdown_content_with_prefix(path, body)
+    if len(content) <= chunk_size:
+        return [
+            TextChunk(
+                content=content,
+                start_pos=block_start,
+                end_pos=block_end,
+                locator=_markdown_chunk_locator_with_path(block_start, block_end, path),
+            )
+        ]
+
+    markdown_type = block.metadata.get("markdown_type")
+    if markdown_type in {"code", "table", "html_block", "front_matter"}:
+        return [
+            TextChunk(
+                content=content,
+                start_pos=block_start,
+                end_pos=block_end,
+                locator=_markdown_chunk_locator_with_path(block_start, block_end, path),
+            )
+        ]
+
+    prefix_chars = len(_markdown_heading_prefix(path))
+    return [
+        TextChunk(
+            content=_markdown_content_with_prefix(path, piece),
+            start_pos=piece_start,
+            end_pos=piece_end,
+            locator=_markdown_chunk_locator_with_path(piece_start, piece_end, path),
+        )
+        for piece, piece_start, piece_end in _split_markdown_body(
+            body=block.text,
+            absolute_start=block_start,
+            chunk_size=chunk_size,
+            prefix_chars=prefix_chars,
+        )
+    ]
+
+
+def _estimate_token_count(text: str) -> int:
+    return max(1, len(text) // 2) if text else 0
+
+
+def _locator_heading_path(locator: dict | None) -> list[str]:
+    if not locator:
+        return []
+    path = locator.get("path") or locator.get("heading_path") or []
+    if isinstance(path, list):
+        return [str(item) for item in path if item]
+    if isinstance(path, str) and path:
+        return [path]
+    return []
+
+
+def _embedding_text(*, file_name: str, content: str, locator: dict | None) -> str:
+    heading_path = " > ".join(_locator_heading_path(locator))
+    parts = [f"文件：{file_name}"]
+    if heading_path:
+        parts.append(f"路径：{heading_path}")
+        parts.append(f"章节：{heading_path.split(' > ')[-1]}")
+    parts.append(f"正文：\n{content}")
+    return "\n".join(parts)
 
 
 def _chunk_markdown_page(page: ParsedPage, *, chunk_size: int = MARKDOWN_CHUNK_SIZE) -> list[TextChunk]:
@@ -154,12 +300,14 @@ def _chunk_markdown_page(page: ParsedPage, *, chunk_size: int = MARKDOWN_CHUNK_S
             return
         content = _markdown_chunk_content(current_path, current_blocks)
         if content and current_start is not None and current_end is not None:
+             
+            logger.debug(f"Chunk content preview: {content[:200]}...")
             chunks.append(
                 TextChunk(
                     content=content,
                     start_pos=current_start,
                     end_pos=current_end,
-                    locator=_markdown_chunk_locator(current_start, current_end),
+                    locator=_markdown_chunk_locator_with_path(current_start, current_end, current_path),
                 )
             )
         current_blocks = []
@@ -177,10 +325,19 @@ def _chunk_markdown_page(page: ParsedPage, *, chunk_size: int = MARKDOWN_CHUNK_S
         if block_start is None or block_end is None:
             continue
 
+        single_block_content = _markdown_chunk_content(current_path, [block])
+        if len(single_block_content) > chunk_size and not current_blocks:
+            chunks.extend(_split_markdown_block(path=current_path, block=block, chunk_size=chunk_size))
+            continue
+
         candidate_blocks = [*current_blocks, block]
         candidate_content = _markdown_chunk_content(current_path, candidate_blocks)
         if current_blocks and len(candidate_content) > chunk_size:
             flush()
+            single_block_content = _markdown_chunk_content(current_path, [block])
+            if len(single_block_content) > chunk_size:
+                chunks.extend(_split_markdown_block(path=current_path, block=block, chunk_size=chunk_size))
+                continue
 
         current_blocks.append(block)
         current_start = block_start if current_start is None else min(current_start, block_start)
@@ -190,10 +347,13 @@ def _chunk_markdown_page(page: ParsedPage, *, chunk_size: int = MARKDOWN_CHUNK_S
             flush()
 
     flush()
+    logger.info(f"Generated {len(chunks)} chunks from markdown blocks.")
     return chunks
 
 
-def _iter_document_chunks(document: ParsedDocument) -> list[tuple[str, int | None, int | None, int | None, dict | None]]:
+def _iter_document_chunks(
+    document: ParsedDocument,
+) -> list[tuple[str, int | None, int | None, int | None, dict | None]]:
     chunks: list[tuple[str, int | None, int | None, int | None, dict | None]] = []
     is_markdown = document.metadata.get("parser") == "markdown"
     for page in document.pages:
@@ -277,7 +437,9 @@ class IngestionService:
             await self.chunks.delete_by_file(file_id)
 
             created_chunks = []
-            for chunk_index, (content, page_number, start_pos, end_pos, locator) in enumerate(_iter_document_chunks(document)):
+            for chunk_index, (content, page_number, start_pos, end_pos, locator) in enumerate(
+                _iter_document_chunks(document)
+            ):
                 chunk = await self.chunks.create(
                     user_id=user_id,
                     file_id=file_id,
@@ -288,12 +450,18 @@ class IngestionService:
                     end_pos=end_pos,
                     locator=locator,
                 )
+                chunk.token_count = _estimate_token_count(content)
                 created_chunks.append(chunk)
 
             await self.tasks.set_progress(task_id, status="running", progress=65)
             await self.db.flush()
 
-            embeddings = await self.embeddings.embed_texts([chunk.content for chunk in created_chunks])
+            embeddings = await self.embeddings.embed_texts(
+                [
+                    _embedding_text(file_name=f.name, content=chunk.content, locator=chunk.locator)
+                    for chunk in created_chunks
+                ]
+            )
             points = []
             for chunk, vector in zip(created_chunks, embeddings, strict=True):
                 vector_id = str(chunk.id)
@@ -304,11 +472,16 @@ class IngestionService:
                         "payload": {
                             "user_id": str(user_id),
                             "file_id": str(file_id),
+                            "file_name": f.name,
                             "chunk_id": str(chunk.id),
                             "folder_id": str(f.folder_id) if f.folder_id else None,
                             "page_number": chunk.page_number,
                             "chunk_index": chunk.chunk_index,
                             "locator": chunk.locator,
+                            "document_type": (chunk.locator or {}).get("type") or f.mime_type,
+                            "heading_path": _locator_heading_path(chunk.locator),
+                            "section_title": (_locator_heading_path(chunk.locator) or [None])[-1],
+                            "token_count": chunk.token_count,
                         },
                     }
                 )
