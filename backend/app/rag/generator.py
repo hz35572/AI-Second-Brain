@@ -12,7 +12,8 @@ NOT_FOUND_ANSWER = "知识库中未找到相关内容。"
 SYSTEM_PROMPT = """你是 AI Second Brain 的知识库问答助手。
 只允许根据提供的上下文回答；上下文没有依据时，回答“知识库中未找到相关内容。”。
 每个事实句或要点都必须包含形如 [1] 的引用标记，引用编号必须来自上下文块编号。
-不要编造来源、页码、文件名或上下文没有出现的信息。"""
+补充上下文只用于理解相邻语义，不能引用没有编号的补充上下文。
+不要编造来源、页码、文件名、命令、配置项或上下文没有出现的信息。"""
 
 
 class RAGGenerator:
@@ -69,8 +70,22 @@ class RAGGenerator:
         for chunk in chunks:
             page = f" page={chunk.page_number}" if chunk.page_number is not None else ""
             text = chunk.content.strip()
-            blocks.append(f"[{chunk.index}] file={chunk.file_name}{page} chunk_id={chunk.chunk_id}\n{text}")
+            supplemental = self._supplemental_context(chunk)
+            blocks.append(
+                f"[{chunk.index}] file={chunk.file_name}{page} chunk_id={chunk.chunk_id}\n{text}{supplemental}"
+            )
         return f"问题：{question}\n\n上下文：\n\n" + "\n\n".join(blocks)
+
+    @staticmethod
+    def _supplemental_context(chunk: RetrievedChunk) -> str:
+        parts: list[str] = []
+        if chunk.context_before:
+            parts.append(f"前文补充（不可单独引用）：\n{chunk.context_before.strip()}")
+        if chunk.context_after:
+            parts.append(f"后文补充（不可单独引用）：\n{chunk.context_after.strip()}")
+        if not parts:
+            return ""
+        return "\n\n" + "\n\n".join(parts)
 
     def _extractive_answer(self, chunks: Sequence[RetrievedChunk]) -> str:
         lines: list[str] = []

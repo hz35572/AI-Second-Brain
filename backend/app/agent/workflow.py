@@ -2,17 +2,40 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from langgraph.graph import END, START, StateGraph
-from sqlalchemy.ext.asyncio import AsyncSession
+try:
+    from langgraph.graph import END, START, StateGraph
+except ImportError:  # pragma: no cover - exercised when optional dependency is not installed
+    END = START = None
+    StateGraph = None
 
 from app.agent.state import QAAgentState
 from app.core.config import Settings, get_settings
 from app.rag.generator import NOT_FOUND_ANSWER, RAGGenerator
-from app.rag.retriever import RAGRetriever
 from app.rag.schemas import RAGResult, RetrievedChunk
 from app.services.citation_validator import repair_missing_citations, validate_answer_citations
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.rag.retriever import RAGRetriever
+
+
+class _LinearQAWorkflow:
+    def __init__(self, workflow: "QAAgentWorkflow") -> None:
+        self.workflow = workflow
+
+    async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+        for node in (
+            self.workflow._load_context,
+            self.workflow._retrieve,
+            self.workflow._generate,
+            self.workflow._validate,
+            self.workflow._emit,
+        ):
+            state.update(await node(state))
+        return state
 
 
 class QAAgentWorkflow:
@@ -20,15 +43,20 @@ class QAAgentWorkflow:
 
     def __init__(
         self,
-        db: AsyncSession,
+        db: "AsyncSession",
         *,
         settings: Settings | None = None,
-        retriever: RAGRetriever | None = None,
+        retriever: "RAGRetriever | None" = None,
         generator: RAGGenerator | None = None,
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
-        self.retriever = retriever or RAGRetriever(db, settings=self.settings)
+        if retriever is None:
+            from app.rag.retriever import RAGRetriever
+
+            self.retriever = RAGRetriever(db, settings=self.settings)
+        else:
+            self.retriever = retriever
         self.generator = generator or RAGGenerator(self.settings)
         self.graph = self._build_graph()
 
@@ -57,6 +85,8 @@ class QAAgentWorkflow:
         )
 
     def _build_graph(self):
+        if StateGraph is None:
+            return _LinearQAWorkflow(self)
         graph = StateGraph(QAAgentState)
         graph.add_node("load_context", self._load_context)
         graph.add_node("retrieve", self._retrieve)
@@ -90,6 +120,7 @@ class QAAgentWorkflow:
         )
         return {
             "retrieved": retrieved,
+            "retrieval_meta": dict(getattr(self.retriever, "last_metadata", {}) or {}),
             "retrieval_ms": int((time.perf_counter() - start) * 1000),
             "node_trace": [*state.get("node_trace", []), "retrieve"],
         }
@@ -122,10 +153,13 @@ class QAAgentWorkflow:
         }
 
     async def _emit(self, state: QAAgentState) -> dict[str, Any]:
+        retrieval_meta = state.get("retrieval_meta", {})
         metadata = {
             **state.get("generation_meta", {}),
+            **retrieval_meta,
             "retrieval_ms": state.get("retrieval_ms", 0),
-            "retrieved_count": len(state.get("retrieved", [])),
+            "retrieved_count": retrieval_meta.get("retrieved_count", len(state.get("retrieved", []))),
+            "selected_count": len(state.get("retrieved", [])),
             "validation_status": state.get("validation_status", "unknown"),
         }
         return {

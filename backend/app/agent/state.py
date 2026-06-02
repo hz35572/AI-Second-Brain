@@ -14,6 +14,7 @@ class QAAgentState(TypedDict, total=False):
     top_k: int | None
     retrieved: list[RetrievedChunk]
     retrieval_ms: int
+    retrieval_meta: dict[str, Any]
     generated_answer: str
     generation_meta: dict[str, Any]
     answer: str
