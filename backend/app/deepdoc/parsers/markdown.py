@@ -8,9 +8,12 @@ from app.deepdoc.parsers.base import BaseParser
 
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$")
-_HTML_BLOCK_START_RE = re.compile(r"^\s*<([A-Z][A-Za-z0-9_-]*)(?:\s[^>]*)?>\s*$")
+_SETEXT_HEADING_RE = re.compile(r"^\s*(=+|-+)\s*$")
+_HTML_BLOCK_START_RE = re.compile(r"^\s*<([A-Za-z][A-Za-z0-9_-]*)(?:\s[^>]*)?>\s*$")
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-+*]|\d+[.)])\s+")
+_BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+_FRONT_MATTER_DELIMITERS = {"---", "+++"}
 
 
 def _decode_markdown(file_path: str) -> str:
@@ -39,6 +42,14 @@ def _is_table_start(lines: list[tuple[str, int, int]], index: int) -> bool:
     current = lines[index][0].strip()
     next_line = lines[index + 1][0].strip()
     return "|" in current and bool(_TABLE_SEPARATOR_RE.match(next_line))
+
+
+def _is_setext_heading(lines: list[tuple[str, int, int]], index: int) -> bool:
+    if index + 1 >= len(lines):
+        return False
+    current = lines[index][0].strip()
+    next_line = lines[index + 1][0].strip()
+    return bool(current and _SETEXT_HEADING_RE.match(next_line) and "|" not in current)
 
 
 def _trim_span(text: str, start: int, end: int) -> tuple[str, int, int]:
@@ -84,6 +95,27 @@ def _parse_blocks(text: str) -> list[ParsedBlock]:
             index += 1
             continue
 
+        if index == 0 and stripped in _FRONT_MATTER_DELIMITERS:
+            delimiter = stripped
+            start = line_start
+            index += 1
+            end = line_end
+            while index < len(lines):
+                candidate, _, candidate_end = lines[index]
+                end = candidate_end
+                index += 1
+                if candidate.strip() == delimiter:
+                    break
+            _append_block(
+                blocks,
+                full_text=text,
+                start=start,
+                end=end,
+                kind="paragraph",
+                metadata={"markdown_type": "front_matter", "path": []},
+            )
+            continue
+
         match = _HEADING_RE.match(stripped)
         if match:
             level = len(match.group(1))
@@ -98,6 +130,22 @@ def _parse_blocks(text: str) -> list[ParsedBlock]:
                 metadata={"level": level, "markdown_type": "heading", "path": path},
             )
             index += 1
+            continue
+
+        if _is_setext_heading(lines, index):
+            marker = lines[index + 1][0].strip()
+            title = stripped
+            level = 1 if marker.startswith("=") else 2
+            path = _heading_path(heading_stack, level, title)
+            _append_block(
+                blocks,
+                full_text=text,
+                start=line_start,
+                end=lines[index + 1][2],
+                kind="title",
+                metadata={"level": level, "markdown_type": "heading", "path": path},
+            )
+            index += 2
             continue
 
         fence_match = _FENCE_RE.match(line)
@@ -197,6 +245,30 @@ def _parse_blocks(text: str) -> list[ParsedBlock]:
                 end=end,
                 kind="paragraph",
                 metadata={"markdown_type": "list", "path": [value for _, value in heading_stack]},
+            )
+            continue
+
+        if _BLOCKQUOTE_RE.match(line):
+            start = line_start
+            end = line_end
+            index += 1
+            while index < len(lines):
+                candidate = lines[index][0]
+                candidate_stripped = candidate.strip()
+                if not candidate_stripped:
+                    break
+                if _BLOCKQUOTE_RE.match(candidate) or candidate.startswith((" ", "\t")):
+                    end = lines[index][2]
+                    index += 1
+                    continue
+                break
+            _append_block(
+                blocks,
+                full_text=text,
+                start=start,
+                end=end,
+                kind="paragraph",
+                metadata={"markdown_type": "blockquote", "path": [value for _, value in heading_stack]},
             )
             continue
 
