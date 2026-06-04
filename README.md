@@ -24,8 +24,6 @@
 - Tailwind CSS
 - 状态管理：Zustand
 - 数据请求：@tanstack/react-query
-- 文档渲染：react-markdown / remark-gfm
-- PDF 预览：react-pdf
 
 **后端**
 
@@ -50,7 +48,7 @@
 ├─ backend/    # FastAPI 服务（/api/v1）
 ├─ frontend/   # Next.js Web UI
 ├─ docs/       # PRD / TDD / API / Database 等文档（单一事实来源）
-└─ docker-compose.yml  # Postgres / Redis / Qdrant / MinIO
+└─ docker-compose.yml  # Docker 编排（依赖服务 + 前后端 full stack profile）
 ```
 
 ---
@@ -60,7 +58,7 @@
 - Node.js 18+（建议 20+）+ npm
 - Python 3.11+
 - uv
-- Docker Desktop（用于一键启动依赖：Postgres/Redis/Qdrant/MinIO）
+- Docker Desktop（用于一键启动依赖，或前后端 + 依赖整体部署）
 
 端口默认占用：
 
@@ -107,7 +105,7 @@ make dev
 打开：
 
 - 前端：`http://localhost:3000`
-- 后端（API）：`http://localhost:8000/api/v1`
+- 后端（API）：`http://localhost:9000/api/v1`
 
 ### 3) 常用 `make` 命令
 
@@ -119,40 +117,31 @@ make backend-run # 只启动后端服务
 make frontend-run # 只启动前端服务
 ``` 
 
----
+## Docker 一键部署（前后端 + 依赖）
 
-## 使用指南（基础操作）
+如果希望前后端也都运行在 Docker 中，可直接使用：
 
-> API 结构与字段以 `docs/API.md` 为准。
+```powershell
+make docker-up
+```
 
-1) **注册 / 登录**
+常用命令：
 
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
+```powershell
+make docker-build  # 构建前后端镜像
+make docker-up     # 构建并启动完整栈
+make docker-ps     # 查看完整栈状态
+make docker-logs   # 查看前后端容器日志
+make docker-down   # 停止完整栈
+```
 
-登录成功后使用 `Authorization: Bearer <token>` 调用后续接口。
+启动后访问：
 
-2) **上传文件**
-
-- 小文件直传：`POST /api/v1/files/upload`（`multipart/form-data`）
-- 大文件分片：
-  - `POST /api/v1/files/upload/init`
-  - `PUT /api/v1/files/upload/{upload_id}/chunks/{chunk_index}`
-  - `POST /api/v1/files/upload/{upload_id}/complete`
-
-3) **查看任务进度**
-
-- `GET /api/v1/tasks/{task_id}/progress`
-
-4) **发起对话（SSE 流式）**
-
-后端按 `chunk* -> citation? -> done` 的事件顺序返回（详见 `docs/TECH_DESIGN.md` 与 `docs/API.md`）。
-
-5) **引用溯源与预览**
-
-回答中的引用角标对应 `Citation` 结构（包含 `file_id`、`page`、`locator`、`highlight_positions` 等），前端点击后打开右侧抽屉进行定位/高亮预览。
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8000/api/v1`
 
 ---
+
 
 ## 常用开发命令
 
