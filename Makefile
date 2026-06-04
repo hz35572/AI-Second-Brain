@@ -1,14 +1,15 @@
 .DEFAULT_GOAL := help
 
 COMPOSE ?= docker compose
+APP_PROFILE ?= app
 UV ?= uv
 UV_RUN ?= $(UV) run
 NPM ?= npm
 BACKEND_DIR ?= backend
 FRONTEND_DIR ?= frontend
-BACKEND_PORT ?= 8000
+BACKEND_PORT ?= 9000
 
-.PHONY: help up down restart ps logs setup install backend-install backend-install-test backend-migrate backend-run backend-test frontend-install frontend-run frontend-build frontend-lint dev test check
+.PHONY: help up down restart ps logs docker-build docker-up docker-down docker-restart docker-ps docker-logs setup install backend-install backend-install-test backend-migrate backend-run backend-test frontend-install frontend-run frontend-build frontend-lint dev test check
 
 help:
 	@echo "AI Second Brain targets:"
@@ -17,6 +18,11 @@ help:
 	@echo "  make restart            Restart docker services"
 	@echo "  make ps                 Show docker service status"
 	@echo "  make logs               Follow docker service logs"
+	@echo "  make docker-build       Build backend/frontend images"
+	@echo "  make docker-up          Build and start full stack in Docker"
+	@echo "  make docker-down        Stop full stack containers"
+	@echo "  make docker-ps          Show full stack service status"
+	@echo "  make docker-logs        Follow full stack service logs"
 	@echo "  make install            Install backend and frontend deps"
 	@echo "  make setup              Install deps and run backend migrations"
 	@echo "  make dev                Run backend and frontend locally"
@@ -40,6 +46,25 @@ ps:
 
 logs:
 	$(COMPOSE) logs -f
+
+docker-build:
+	$(COMPOSE) --profile $(APP_PROFILE) build backend frontend
+
+docker-up:
+	$(COMPOSE) --profile $(APP_PROFILE) up -d --build
+
+docker-down:
+	$(COMPOSE) down
+
+docker-restart:
+	$(MAKE) docker-down
+	$(MAKE) docker-up
+
+docker-ps:
+	$(COMPOSE) --profile $(APP_PROFILE) ps
+
+docker-logs:
+	$(COMPOSE) --profile $(APP_PROFILE) logs -f backend frontend
 
 setup:
 	$(MAKE) up

@@ -5,6 +5,11 @@ services:
       POSTGRES_USER: aisb
       POSTGRES_PASSWORD: aisb
       POSTGRES_DB: aisb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisb -d aisb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "5433:5432"
     volumes:
@@ -12,6 +17,11 @@ services:
 
   redis:
     image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "6379:6379"
     volumes:
@@ -37,8 +47,88 @@ services:
     volumes:
       - aisb_minio:/data
 
+  backend:
+    profiles: ["app"]
+    build:
+      context: ./backend
+    command: >
+      sh -c "alembic -c alembic.ini upgrade head &&
+      uvicorn app.main:app --host 0.0.0.0 --port 9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      AISB_DEBUG: "false"
+      AISB_ENVIRONMENT: local
+      AISB_DATABASE_URL: postgresql+asyncpg://aisb:aisb@postgres:5432/aisb
+      AISB_DATABASE_URL_SYNC: postgresql+psycopg://aisb:aisb@postgres:5432/aisb
+      AISB_POSTGRES_HOST: postgres
+      AISB_POSTGRES_PORT: 5432
+      AISB_REDIS_URL: redis://redis:6379/0
+      AISB_CELERY_BROKER_URL: redis://redis:6379/0
+      AISB_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      AISB_QDRANT_HOST: qdrant
+      AISB_QDRANT_PORT: 6333
+      AISB_CORS_ORIGINS: '["http://localhost:3000","http://frontend:3000"]'
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/openapi.json', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    ports:
+      - "8000:9000"
+    restart: unless-stopped
+    volumes:
+      - aisb_backend_data:/app/backend/.data
+      - aisb_backend_media:/app/backend/media
+      - aisb_backend_models:/app/backend/models_cache
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_API_BASE: http://backend:9000/api/v1
+      NEXT_PUBLIC_API_BASE: /api/v1
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then((res) => { if (!res.ok) process.exit(1); }).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
 volumes:
   aisb_pg:
   aisb_redis:
   aisb_qdrant:
   aisb_minio:
+  aisb_backend_data:
+  aisb_backend_media:
+  aisb_backend_models:
