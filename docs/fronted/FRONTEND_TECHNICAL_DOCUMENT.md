@@ -347,7 +347,7 @@ docker compose up -d
 ```powershell
 cd backend
 python -m pip install -e .
-python -m uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 9000
 ```
 
 ### 9.3 初始化并启动前端（待实现）
@@ -373,13 +373,13 @@ npm run start
 
 ### 10.2 部署（建议）
 
-- SaaS：Next.js 部署到 Vercel 或容器化部署（nginx 反代到后端）
-- 本地版：与后端一起打包（Tauri/Electron 属于后续阶段）
+- SaaS：Next.js 部署到 Vercel 或容器化部署
+- 本地/自托管：可直接使用项目根目录 `docker-compose.yml` 的 `app` profile 同时启动 frontend、backend 与依赖服务，对应命令为 `make docker-up`
 
 关键注意点：
 
 - SSE 需要禁用代理缓冲（nginx `X-Accel-Buffering: no`）
-- 跨域：本地 dev 通过 Next.js rewrites 或后端 CORS
+- 跨域：本地 dev 和 Docker 部署都通过 Next.js rewrites 将 `/api/v1/*` 代理到后端，后端保留 CORS 作为兜底
 
 ---
 

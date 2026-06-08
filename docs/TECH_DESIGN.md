@@ -75,6 +75,7 @@ backend/
 - PostgreSQL 可通过 `AISB_DATABASE_URL` 配置，也可通过 `AISB_POSTGRES_HOST`、`AISB_POSTGRES_PORT`、`AISB_POSTGRES_USER`、`AISB_POSTGRES_PASSWORD`、`AISB_POSTGRES_DB` 配置
 - Alembic 使用 `settings.DATABASE_URL_SYNC`；应用运行时使用 `settings.DATABASE_URL`
 - 日志由 `app.core.logging_config.configure_logging()` 统一初始化，默认读取 `AISB_LOG_*` 配置；如设置 `AISB_LOG_CONFIG_FILE`，则从 JSON 格式的 `logging.config.dictConfig` 配置文件加载完整日志配置。详细使用指南见 `docs/backend/logging.md`
+- 项目根目录 `docker-compose.yml` 通过默认服务启动 Postgres/Redis/Qdrant/MinIO，通过 `app` profile 额外启动容器化的 backend/frontend；对应一键命令见根目录 `Makefile` 中的 `make docker-up`
 
 最小本地配置：
 

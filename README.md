@@ -1,43 +1,165 @@
 # AI Second Brain
 
-基于 RAG（Retrieval-Augmented Generation，检索增强生成）的个人知识库问答系统。你可以上传本地资料（TXT/PDF/Word 等），用自然语言进行对话式检索与问答；系统要求回答内容**严格可溯源**：每个事实句/要点都必须绑定引用，点击引用角标可在右侧抽屉预览原文并定位/高亮。
+
+AI Second Brain是一个企业级 Agentic RAG（Retrieval-Augmented Generation）平台，覆盖从文档入库到智能问答的完整链路。项目旨在解决企业知识管理中的信息孤岛问题，提供智能化的文档检索与问答能力。
 
 ---
 
-## 核心功能（MVP / V1.0）
+## 项目预览
 
-- **文件/文件夹管理**：文件夹树 + 文件 CRUD
-- **上传与解析**：支持小文件直传与大文件分片上传（含进度）
-- **RAG 问答 + SSE 流式输出**：首条 `chunk` 快速返回（TTFB 指标）
-- **严格引用溯源（硬约束）**
-  - 输出中每个事实句/要点必须带引用标记 `[n]`
-  - 点击引用角标可跳转到原文对应位置并高亮（MVP 先保证页码正确 + 高亮近似可见）
-- **范围问答（Scope）**：global / folder / file 级别过滤检索范围
+![主页面](./docs/imgs/screenshot.png)
 
+---
+
+## 核心功能
+
+- **智能问答**：基于企业知识库提供准确的 AI 问答服务
+- **多路检索**：多渠道并行检索，兼顾精准与召回
+- **意图识别**：树形多级分类，置信度不足时主动引导澄清
+- **模型引擎**：模型调度、健康检查、自动降级，确保服务稳定性
 ---
 
 ## 技术栈
 
-**前端**
 
-- Next.js（App Router）+ TypeScript
-- Tailwind CSS
-- 状态管理：Zustand
-- 数据请求：@tanstack/react-query
+- Backend：FastAPI、SQLAlchemy 2.x async、Alembic、Pydantic Settings
+- Metadata DB：PostgreSQL 16
+- Cache / progress / future queue：Redis
+- Vector DB：Qdrant（开发/测试环境在 Qdrant 不可用时可使用进程内 fallback，生产必须使用 Qdrant）
+- Storage：本地文件系统（开发默认），后续兼容 MinIO/S3
+- Frontend：Next.js App Router、TypeScript、Tailwind CSS、Zustand
+- Streaming：SSE，事件顺序为 `chunk* -> citation? -> done`
 
-**后端**
 
-- FastAPI（Python 3.11+）
-- SSE（流式输出）
-- SQLAlchemy（Async）+ Alembic
-- PostgreSQL（MVP 元数据统一使用 Postgres）
-- Redis（缓存 / 会话 / 进度 / 限流等）
-- 文档解析：pypdf、python-docx
+---
 
-**向量检索 / 存储**
+## 系统架构
 
-- Qdrant（向量库，默认）
-- 对象存储：本地文件系统（开发）/ MinIO（部署示例，兼容 S3）
+```text
+用户浏览器
+    │
+    │  REST API / 文件上传
+    ▼
+Next.js Web UI
+    │
+    │  REST API
+    ▼
+FastAPI Backend（/api/v1）
+    │
+    ├── Auth & Scope
+    │     └── JWT / global-folder-file 范围问答
+    │
+    ├── Ingestion Service
+    │     ├── 上传 / 分片 / 任务进度
+    │     ├── DeepDoc 解析 TXT / PDF / Word
+    │     ├── 清洗 / 分块 / locator 保留
+    │     ├── PostgreSQL：users / files / chunks / tasks
+    │     ├── Qdrant：chunk embeddings
+    │     ├── Redis：cache / progress
+    │     └── Local Storage / MinIO：原始文件
+    │
+    └── RAG Agent Workflow
+          ├── retrieve：Hybrid Retriever（Vector + BM25 + Rerank）
+          │     ├── PostgreSQL：元数据与 chunk 回查
+          │     ├── Qdrant：向量召回
+          │     └── Redis：缓存 / 降级辅助
+          ├── generate：OpenAI-compatible LLM
+          ├── validate：Citation Validator（逐句引用校验 / 降级）
+          └── emit：SSE chunk* -> citation? -> done
+                    │
+                    ▼
+              Next.js Web UI 实时渲染回答与引用
+```
+
+## 用户问答流程
+
+```
+用户提问
+    │
+    ▼
+┌─────────────────┐
+│  1. 问题重写     │  ← 补全多轮对话上下文
+│  (Query Rewrite)│
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  2. 意图识别     │  ← 树形多级分类
+│  (Intent Classify)│
+└─────────────────┘
+    │
+    ├── 置信度不足 → 引导澄清
+    │
+    ▼
+┌─────────────────┐
+│  3. 多路检索     │  ← 并行执行多个检索通道
+│  (Multi-Channel Retrieval)│
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  4. 后处理       │  ← 去重 → Rerank
+│  (Post-Process) │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  5. 上下文组装   │  ← 构建 Prompt
+│  (Context Build)│
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  6. 模型生成     │  ← 流式输出 SSE
+│  (LLM Generate) │
+└─────────────────┘
+    │
+    ▼
+  返回答案
+```
+
+## 文档入库流程
+
+```
+文档上传
+    │
+    ▼
+┌─────────────────┐
+│  1. 获取文档     │  ← 文件上传
+│  (Fetcher)      │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  2. 解析文档     │  ← Markdown 解析
+│  (Parser)       │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  3. 分块处理     │  ← 固定大小 / 结构感知
+│  (Chunker)      │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  4. 增强处理     │  ← 摘要生成 / 问答对生成
+│  (Enhancer)     │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  5. 向量化       │  ← Embedding 模型
+│  (Embedding)    │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│  6. 索引存储     │  ← Qdrant
+│  (Indexer)      │
+└─────────────────┘
+```
+
 
 ---
 
@@ -160,16 +282,5 @@ cd frontend
 npm run lint
 npm run build
 ```
-
----
-
-
----
-
-## Roadmap（概览）
-
-- V1.0（MVP）：上传解析 + RAG 问答 + SSE + 引用溯源 + 基础文件/文件夹 CRUD
-- V1.5：自动标签/摘要、范围问答 UI、对话历史
-- V2.0：多模态、本地化、第三方同步、分享与权限细化
 
 ---
